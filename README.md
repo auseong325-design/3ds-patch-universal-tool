@@ -6,6 +6,10 @@ This tool helps creators and players prepare and apply 3DS translation patches. 
 
 ## 시작하기 / Getting started
 
+Windows 64비트 배포판은 [Releases](https://github.com/auseong325-design/3ds-patch-universal-tool/releases)에서 ZIP을 받아 압축을 푼 뒤 실행하세요. Python과 .NET은 배포판에 포함되어 있습니다.
+
+For the Windows x64 portable build, download and extract the ZIP from [Releases](https://github.com/auseong325-design/3ds-patch-universal-tool/releases). Python and .NET are included.
+
 Windows: Python 3.10+와 Tkinter를 설치하고 `upstream/TranslationToolkit/3DS 한글패치 매니저 실행.bat`를 실행하세요. 리팩에는 .NET 10과 RomForge 브리지가, xdelta 패키지에는 xdelta3가 필요합니다. [상세 안내](upstream/TranslationToolkit/README_KO.md)
 
 On Windows, install Python 3.10+ with Tkinter and run `upstream/TranslationToolkit/3DS 한글패치 매니저 실행.bat`. Repacking requires .NET 10 and the RomForge bridge; xdelta packages require xdelta3. See the [Korean guide](upstream/TranslationToolkit/README_KO.md) and [bridge build notes](RomForge-reference/README_KPM.md). A Windows portable build can be created using `packaging/build_portable.py`.
