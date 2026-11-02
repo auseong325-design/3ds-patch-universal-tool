@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <KpmBridge>true</KpmBridge>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../N3DS/N3DS.csproj" AdditionalProperties="KpmBridge=true" />
+    <ProjectReference Include="../Patch/Patch.csproj" />
+    <ProjectReference Include="../Common/Common.csproj" />
+    <Compile Include="../RomForge.Core/Services/N3DS/RepackService.cs" Link="RomForge/RepackService.cs" />
+    <Compile Include="../RomForge.Core/Services/N3DS/RepackOutputBuilder.cs" Link="RomForge/RepackOutputBuilder.cs" />
+    <Compile Include="../RomForge.Core/Services/N3DS/PatchSourceContext.cs" Link="RomForge/PatchSourceContext.cs" />
+    <Compile Include="../RomForge.Core/Services/N3DS/RepackOutputFormatExtensions.cs" Link="RomForge/RepackOutputFormatExtensions.cs" />
+    <Compile Include="../RomForge.Core/Models/N3DS/RepackOutputFormat.cs" Link="RomForge/RepackOutputFormat.cs" />
+  </ItemGroup>
+</Project>

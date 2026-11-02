@@ -1,0 +1,23 @@
+*
+!*/
+!Resources/Images/*.ico
+!/.gitignore
+!/LICENSE
+!/README.md
+!/requirements.txt
+!/FileReplacer.py
+!/GameManager.py
+!/SendToCitra.py
+!/SendViaFTP.py
+!/WorkspaceManager.py
+!/ToolManager.py
+!/TranslationPatcher.py
+!/TranslationToolkit.py
+!/TranslationToolkit.spec
+!/KoreanPatchManager.py
+!/3DS 한글패치 매니저 실행.bat
+!/README_KO.md
+!/korean_patch_manager/*.py
+!/tests/*.py
+!/BinJEditor/JTools.py
+!/BinJEditor/LICENSE

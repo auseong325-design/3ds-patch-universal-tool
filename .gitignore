@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+**/bin/
+**/obj/
+**/tools/
+dist/
+work/
+*.cia
+*.cci
+*.3ds
+*.zcci
+aes_keys.txt
+certs.bin
+boot9.bin
+seeddb.bin
