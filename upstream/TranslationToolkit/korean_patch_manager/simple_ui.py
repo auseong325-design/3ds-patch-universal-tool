@@ -7,10 +7,10 @@ from tkinter import ttk, filedialog
 from . import core, runtime, simple
 
 PURPOSES = {
-    'merge': ('통합 패치로 게임 파일 만들기', '받은 통합 ZIP을 적용합니다. HOME 배너도 패키지에 포함돼 있으면 반영됩니다.'),
-    'install': ('받은 설치 ZIP 사용 안내', 'SD 카드나 Azahar에 파일을 복사하는 방법을 봅니다. 키 파일은 필요 없습니다.'),
-    'delta': ('일반 xdelta 패키지 복원', '원본 RomFS와 받은 xdelta ZIP으로 설치용 ZIP을 복원합니다.'),
-    'build': ('설치 ZIP 만들기 · 제작자', '원본과 수정한 RomFS를 비교해 Luma·Azahar용 ZIP을 만듭니다.'),
+    'merge': ('게임에 패치 넣기', '통합 패치 ZIP을 받은 경우입니다. 패치가 들어간 게임 파일을 만듭니다.'),
+    'install': ('패치 설치 방법 보기', '설치용 ZIP을 SD 카드나 Azahar에 넣는 방법을 안내합니다.'),
+    'delta': ('xdelta 패치 풀기', '일반 xdelta ZIP을 설치용으로 바꿉니다. 원본 게임 데이터 폴더가 필요합니다.'),
+    'build': ('배포용 패치 만들기', '제작자용입니다. 번역한 파일을 Luma·Azahar용 설치 ZIP으로 묶습니다.'),
 }
 HELP = {
     'game': ('원본 게임 파일', '게임 카드나 설치된 게임은 GodMode9로 파일로 내보낼 수 있습니다.\n'
@@ -39,7 +39,7 @@ HELP = {
               '생성된 original은 원본, edited는 편집할 전체 복사본입니다.\n'
               '일반 xdelta 복원은 배포자가 지정한 기준의 original이 필요합니다.\n'
               '설치 ZIP 제작에는 변경 파일만 든 폴더가 아니라 edited 전체를 선택하세요.', None, None),
-    'package': ('내가 받은 ZIP은 무엇인가요?', '설치 ZIP: luma 또는 romfs 등의 폴더가 들어 있습니다. 사용 안내를 선택하세요.\n'
+    'package': ('어떤 ZIP을 골라야 하나요?', '설치 ZIP: luma 또는 romfs 등의 폴더가 들어 있습니다. 「패치 설치 방법 보기」를 선택하세요.\n'
                 '통합 ZIP: 이 툴의 통합 패키지이며 본편에 업데이트·번역·선택한 배너를 적용합니다.\n'
                 '일반 xdelta ZIP: 원본 RomFS에서 번역 파일을 복원합니다.\n'
                 '받은 파일이 어느 종류인지 배포 안내를 먼저 확인하세요.', None, None),
@@ -130,14 +130,14 @@ class SimplePanel(ttk.Frame):
     def render(self):
         for widget in self.body.winfo_children(): widget.destroy()
         self.canvas.yview_moveto(0)
-        self.label('간편 모드  ·  ' + (f'{self.step + 1}/3  ' + ('목적 선택', '파일 준비', '내용 확인')[self.step] if self.step < 3 else '작업 결과'), 'Info.TLabel')
+        self.label('간편 모드  ·  ' + (f'{self.step + 1}/3  ' + ('할 일 고르기', '파일 고르기', '시작하기')[self.step] if self.step < 3 else '완료' if self.result_ok else '확인이 필요해요'), 'Info.TLabel')
         purpose = self.purpose.get()
         if self.step == 0:
-            self.label('무엇을 하고 싶으신가요?')
+            self.label('어떤 작업을 할까요?')
             for key, (title, desc) in PURPOSES.items():
                 ttk.Radiobutton(self.body, text=title, value=key, variable=self.purpose).pack(anchor='w', pady=(6, 3))
                 self.label(desc)
-            ttk.Button(self.body, text='다음 · 준비물 확인', command=self.next).pack(anchor='e', pady=10)
+            ttk.Button(self.body, text='다음', command=self.next).pack(anchor='e', pady=10)
             return
         self.label(PURPOSES[purpose][0])
         if self.step == 1:
@@ -149,66 +149,66 @@ class SimplePanel(ttk.Frame):
                 self.label('키 파일이나 작업 폴더는 필요하지 않습니다.', 'Success.TLabel')
             elif purpose == 'merge':
                 line = ttk.Frame(self.body); line.pack(anchor='w', pady=(0, 10))
-                for text, value in (('Azahar용 CCI', 'CCI'), ('3DS 설치용 CIA', 'CIA')):
+                for text, value in (('PC에서 사용', 'CCI'), ('3DS에 설치', 'CIA')):
                     ttk.Radiobutton(line, text=text, value=value, variable=self.fmt, command=self.render).pack(side='left', padx=(0, 15))
-                self.field('game', '본편 게임 파일', topic='game')
-                self.field('package', '받은 통합 패키지 ZIP', topic='package')
-                self.field('output', '만들 게임 파일', 'save')
+                self.field('game', '원본 게임 파일 · 본편', topic='game')
+                self.field('package', '통합 패치 ZIP', topic='package')
+                self.field('output', '저장할 파일 이름', 'save')
                 if self.fmt.get() == 'CIA':
-                    self.field('keys', '키·인증서가 있는 폴더', 'dir', 'keys')
+                    self.field('keys', '키 파일이 든 폴더', 'dir', 'keys')
                     ttk.Button(self.body, text='certs.bin 준비 방법', command=lambda: self.help('certs')).pack(anchor='w', pady=(0, 8))
                     self.label('CIA에는 키와 certs.bin이 필요합니다. 통합 CIA의 실기 실행은 별도 확인이 필요합니다.', 'Warning.TLabel')
                 else:
                     self.label('복호화된 본편이면 키 없이 먼저 시도할 수 있습니다.', 'Info.TLabel')
-                    ttk.Checkbutton(self.body, text='암호화된 원본 · 키 폴더 지정', variable=self.optional, command=self.render).pack(anchor='w', pady=(0, 8))
+                    ttk.Checkbutton(self.body, text='키 파일 직접 선택', variable=self.optional, command=self.render).pack(anchor='w', pady=(0, 8))
                     if self.optional.get(): self.field('keys', '키 폴더', 'dir', 'keys')
             elif purpose == 'delta':
-                self.field('original', '배포자가 지정한 원본 RomFS 폴더', 'dir', 'romfs')
-                self.field('package', '받은 일반 xdelta ZIP', topic='package')
-                self.field('output', '복원 결과를 저장할 폴더', 'dir')
+                self.field('original', '원본 게임 데이터 폴더 (RomFS)', 'dir', 'romfs')
+                self.field('package', 'xdelta 패치 ZIP', topic='package')
+                self.field('output', '저장할 폴더', 'dir')
                 self.label('이 작업 자체에는 키가 필요하지 않습니다. 원본 추출에는 필요할 수 있습니다.', 'Info.TLabel')
             else:
-                self.field('title_id', '본편 Title ID · 16자리', 'text')
-                self.field('original', '원본 RomFS 전체 폴더', 'dir', 'romfs')
-                self.field('edited', '번역한 RomFS 전체 폴더', 'dir', 'romfs')
+                self.field('title_id', '게임 ID (Title ID · 16자리)', 'text')
+                self.field('original', '원본 데이터 전체 폴더 (RomFS)', 'dir', 'romfs')
+                self.field('edited', '번역한 데이터 전체 폴더 (RomFS)', 'dir', 'romfs')
                 self.field('output', '설치 ZIP을 저장할 빈 폴더', 'dir')
-                ttk.Checkbutton(self.body, text='선택 항목 · 실행 코드 IPS 추가', variable=self.optional, command=self.render).pack(anchor='w', pady=(0, 8))
+                ttk.Checkbutton(self.body, text='코드 패치(IPS)도 넣기', variable=self.optional, command=self.render).pack(anchor='w', pady=(0, 8))
                 if self.optional.get(): self.field('ips', '이 게임 버전용 code.ips')
             if purpose in ('merge', 'delta') and not Path(self.app.vars['xdelta'].get()).is_file():
                 self.label('xdelta가 아직 준비되지 않았습니다.', 'Warning.TLabel')
                 ttk.Button(self.body, text='xdelta 자동 설치 · Windows x64', command=self.app.install_xdelta).pack(anchor='w')
                 ttk.Button(self.body, text='설치된 xdelta 선택', command=lambda: self.app.browse('xdelta', 'file')).pack(anchor='w', pady=5)
-            self.validation = self.label('입력을 마치면 다음을 누르세요.', 'Info.TLabel')
-            self.nav('안내 완료' if purpose == 'install' else '다음 · 내용 확인', self.next)
+            self.validation = self.label('파일을 고른 뒤 다음을 누르세요.' if purpose != 'install' else '안내에 따라 설치하면 됩니다.', 'Info.TLabel')
+            self.nav('처음으로' if purpose == 'install' else '다음', self.next)
         elif self.step == 2:
             self.label('선택한 내용으로 진행합니다. 원본 파일은 수정하지 않습니다.', 'Info.TLabel')
             values = self.snapshot()
             for key, title in self.required_fields(): self.label(f'{title}: {values[key]}')
             if purpose == 'merge':
-                self.label(f"출력: {self.fmt.get()}  ·  작업 폴더는 자동 준비합니다.")
+                self.label(f"만들 파일: {'PC용 CCI' if self.fmt.get() == 'CCI' else '3DS 설치용 CIA'}")
                 self.label('패키지의 60fps·배너 구성이 그대로 적용됩니다. 설치된 공식 업데이트가 우선할 수 있으니 배포 안내를 확인하세요.', 'Warning.TLabel')
             else: self.label('완성된 설치 ZIP은 배포 안내에 따라 설치하세요.')
-            self.nav('시작', self.execute)
+            self.nav({'merge': '패치 적용', 'delta': '파일 복원', 'build': 'ZIP 만들기'}[purpose], self.execute)
         else:
             self.label(self.result_text, 'Success.TLabel' if self.result_ok else 'Warning.TLabel')
             if not self.result_ok:
                 ttk.Button(self.body, text='키·필요 파일 준비 방법', command=lambda: self.help('keys')).pack(anchor='w', pady=8)
-                ttk.Button(self.body, text='입력으로 돌아가기', command=lambda: self.go(1)).pack(anchor='w')
-            ttk.Button(self.body, text='다른 작업 선택', command=lambda: self.go(0)).pack(anchor='e', pady=10)
+                ttk.Button(self.body, text='파일 다시 고르기', command=lambda: self.go(1)).pack(anchor='w')
+            ttk.Button(self.body, text='처음으로', command=lambda: self.go(0)).pack(anchor='e', pady=10)
 
     def go(self, step):
         self.step = step; self.render()
 
     def nav(self, title, action):
         row = ttk.Frame(self.body); row.pack(fill='x', pady=10)
-        ttk.Button(row, text='이전', command=lambda: self.go(self.step - 1)).pack(side='left')
+        ttk.Button(row, text='뒤로', command=lambda: self.go(self.step - 1)).pack(side='left')
         ttk.Button(row, text=title, command=action).pack(side='right')
 
     def snapshot(self):
         return {key: var.get().strip() for key, var in self.values.items()}
 
     def required_fields(self):
-        return {'merge': [('game', '본편'), ('package', '통합 ZIP'), ('output', '결과 파일')],
+        return {'merge': [('game', '원본 게임 파일'), ('package', '통합 패치 ZIP'), ('output', '저장할 파일 이름')],
                 'delta': [('original', '원본 RomFS'), ('package', 'xdelta ZIP'), ('output', '저장 폴더')],
                 'build': [('title_id', '본편 ID'), ('original', '원본 RomFS'), ('edited', '수정 RomFS'), ('output', '출력 폴더')],
                 'install': []}[self.purpose.get()] + ([('keys', '키·인증서 폴더')] if self.purpose.get() == 'merge' and self.fmt.get() == 'CIA' else [])
@@ -246,7 +246,7 @@ class SimplePanel(ttk.Frame):
             if purpose == 'merge':
                 result = simple.apply_merged_game(values['game'], values['package'], values['output'], fmt, keys, bridge, xdelta,
                                                   log=lambda line: self.app.messages.put(('progress', line)))
-                return f"파일 생성과 해시 확인 완료\n{result['output']}\n실제 설치·실행은 게임별 안내에 따라 확인하세요."
+                return f"패치가 적용된 게임 파일을 만들었습니다.\n{result['output']}\n설치와 실행은 게임별 안내를 확인하세요."
             if purpose == 'delta':
                 result = simple.restore_delta(values['original'], values['package'], values['output'], xdelta)
                 return f"설치 ZIP 복원 완료\n{result['output']}"
