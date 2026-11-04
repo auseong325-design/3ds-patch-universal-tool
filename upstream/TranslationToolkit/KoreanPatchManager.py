@@ -10,7 +10,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from korean_patch_manager import core, metadata, tools, romforge, merge, guidance, runtime
+from korean_patch_manager import core, metadata, tools, romforge, merge, guidance, runtime, simple_ui
 
 
 class App(tk.Tk):
@@ -23,6 +23,9 @@ class App(tk.Tk):
         self.messages = queue.Queue()
         self.busy = False
         self.current_job = ''
+        self.job_callback = None
+        self.mode = tk.StringVar(value='간편 모드')
+        self.details = tk.BooleanVar(value=False)
         self.vars = {k: tk.StringVar() for k in ('title_id', 'region', 'version', 'original', 'edited',
                      'original_rom', 'code_ips', 'original_code', 'output', 'azahar', 'xdelta', 'host', 'port', 'user', 'password', 'keys', 'repack_format', 'cia_version', 'merge_base', 'merge_update', 'merge_patch', 'merge_ips', 'merge_banner')}
         self.vars['port'].set('5000')
@@ -30,7 +33,13 @@ class App(tk.Tk):
         local_xdelta = Path(__file__).resolve().parent / 'tools' / 'xdelta-3.2.2' / 'xdelta3.exe'
         if local_xdelta.is_file(): self.vars['xdelta'].set(str(local_xdelta))
         self.make_ui()
-        self.after(100, self.poll)
+        self.poll_timer = self.after(100, self.poll)
+
+    def destroy(self):
+        if getattr(self, 'poll_timer', None):
+            self.after_cancel(self.poll_timer)
+            self.poll_timer = None
+        super().destroy()
 
     def make_ui(self):
         style = ttk.Style(self)
@@ -40,10 +49,14 @@ class App(tk.Tk):
         style.configure('Error.TLabel', foreground='#ac3333')
         outer = ttk.Frame(self, padding=12); outer.pack(fill='both', expand=True)
         header = ttk.Frame(outer); header.pack(fill='x')
+        self.project_buttons = ttk.Frame(header)
+        self.project_buttons.pack(side='left')
         for label, action in [('새 프로젝트', self.new), ('열기', self.open), ('저장', self.save), ('다른 이름 저장', lambda: self.save(True))]:
-            ttk.Button(header, text=label, command=action).pack(side='left', padx=(0, 6))
-        ttk.Button(header, text='기존 Toolkit CLI 실행', command=self.legacy).pack(side='right')
+            ttk.Button(self.project_buttons, text=label, command=action).pack(side='left', padx=(0, 6))
+        self.legacy_button = ttk.Button(header, text='기존 Toolkit CLI 실행', command=self.legacy)
+        self.legacy_button.pack(side='right')
         ttk.Button(header, text='도움말  F1', command=self.show_help).pack(side='right', padx=(0, 8))
+        ttk.Combobox(header, textvariable=self.mode, values=('간편 모드', '전체 모드'), state='readonly', width=12).pack(side='right', padx=(0, 8))
         self.tab_hint = ttk.Label(outer, text='', style='Info.TLabel', wraplength=900)
         self.tab_hint.pack(anchor='w', pady=6)
         book = self.book = ttk.Notebook(outer)
@@ -131,17 +144,35 @@ class App(tk.Tk):
         bottom = ttk.Frame(outer); bottom.pack(side='bottom', fill='x', pady=(8, 0))
         status = ttk.Frame(bottom); status.pack(fill='x', pady=(0, 2))
         ttk.Label(status, text='결과 및 진행 상황').pack(side='left')
+        ttk.Checkbutton(status, text='작업 기록 보기', variable=self.details, command=self.update_mode).pack(side='left', padx=10)
         self.status_label = ttk.Label(status, text='대기 중', style='Info.TLabel')
         self.status_label.pack(side='right')
         self.progress = ttk.Progressbar(status, mode='indeterminate', length=100)
-        logframe = ttk.Frame(bottom); logframe.pack(fill='x')
+        logframe = self.logframe = ttk.Frame(bottom); logframe.pack(fill='x')
         self.log = tk.Text(logframe, height=4, wrap='word'); self.log.pack(side='left', fill='x', expand=True)
         self.log.tag_configure('ok', foreground='#267044')
         self.log.tag_configure('error', foreground='#ac3333')
         self.log.tag_configure('progress', foreground='#245e91')
         scroll = ttk.Scrollbar(logframe, command=self.log.yview); scroll.pack(side='right', fill='y'); self.log.configure(yscrollcommand=scroll.set)
         book.pack(side='top', fill='both', expand=True)
+        self.simple_panel = simple_ui.SimplePanel(outer, self)
+        self.mode.trace_add('write', self.update_mode)
         self.update_guidance(); self.update_tab_hint()
+        self.update_mode()
+
+    def update_mode(self, *_):
+        simple_mode = self.mode.get() == '간편 모드'
+        self.book.pack_forget(); self.simple_panel.pack_forget()
+        self.tab_hint.pack_forget(); self.project_buttons.pack_forget(); self.legacy_button.pack_forget()
+        if simple_mode:
+            self.simple_panel.pack(side='top', fill='both', expand=True)
+        else:
+            self.project_buttons.pack(side='left')
+            self.legacy_button.pack(side='right')
+            self.book.pack(side='top', fill='both', expand=True)
+            self.tab_hint.pack(anchor='w', pady=6, before=self.book)
+        self.logframe.pack_forget()
+        if not simple_mode or self.details.get(): self.logframe.pack(fill='x')
 
     def scroll_tab(self, book, name):
         page = ttk.Frame(book)
@@ -172,6 +203,7 @@ class App(tk.Tk):
         messagebox.showinfo(label, guidance.FIELD_HELP.get(key, '이 항목의 값을 입력하세요.'), parent=self)
 
     def select_tab(self, name):
+        self.mode.set('전체 모드')
         self.book.select(self.tab_frames[name])
 
     def open_scenario_tab(self):
@@ -223,6 +255,9 @@ class App(tk.Tk):
             self.tab_hint.configure(wraplength=width)
 
     def show_help(self):
+        if self.mode.get() == '간편 모드':
+            self.simple_panel.help()
+            return
         name = self.book.tab(self.book.select(), 'text')
         messages = {
             '처음 시작': '목적을 선택하면 준비물과 단계별 설명이 나타납니다. 경로 확인 표시는 파일 존재 여부만 뜻합니다.\n\n입력란 옆 ? 버튼을 누르면 해당 항목의 설명을 볼 수 있습니다.',
@@ -269,9 +304,9 @@ class App(tk.Tk):
             if interpreter.name.lower() == 'pythonw.exe': interpreter = interpreter.with_name('python.exe')
             subprocess.Popen([str(interpreter), str(script)], cwd=folder, creationflags=subprocess.CREATE_NEW_CONSOLE)
         else: messagebox.showinfo('기존 CLI', f'터미널에서 작업 폴더로 이동한 후 실행하세요:\n{sys.executable} {script}')
-    def run_job(self, label, func):
+    def run_job(self, label, func, on_done=None):
         if self.busy: messagebox.showinfo('작업 중', '현재 작업이 끝난 후 다시 시도하세요.'); return
-        self.busy = True; self.current_job = label
+        self.busy = True; self.current_job = label; self.job_callback = on_done
         self.status_label.configure(text=f'{label} 진행 중', style='Info.TLabel')
         self.progress.pack(side='right', padx=(0, 10)); self.progress.start(12)
         self.write(f'\n{label} 시작...', 'progress')
@@ -310,9 +345,11 @@ class App(tk.Tk):
                 self.status_label.configure(text=f"{self.current_job} {'실패' if state == 'error' else '완료 · 결과 확인'}",
                                             style='Error.TLabel' if state == 'error' else 'Success.TLabel')
                 self.write(str(result), 'error' if state == 'error' else 'ok')
-                if state == 'error': messagebox.showerror('작업 실패', str(result))
+                callback = self.job_callback; self.job_callback = None
+                if callback: callback(state, result)
+                elif state == 'error': messagebox.showerror('작업 실패', str(result))
         except queue.Empty: pass
-        self.after(100, self.poll)
+        self.poll_timer = self.after(100, self.poll)
     def write(self, text, tag=None):
         self.log.insert('end', text + '\n', tag or ())
         self.log.see('end')

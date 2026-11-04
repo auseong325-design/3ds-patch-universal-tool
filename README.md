@@ -4,6 +4,10 @@
 
 This tool helps creators and players prepare and apply 3DS translation patches. It supports file-level patches, Luma3DS and Azahar packages, and rebuilding a game with an update, translation and optional HOME banner. The interface and built-in help are currently in Korean.
 
+간편 모드는 목적을 고르면 필요한 파일만 보여 주며, 준비 방법 도움말을 제공합니다. 통합 패키지 적용에 필요한 작업 폴더는 자동으로 준비합니다. 세부 제작 기능은 전체 모드에서 사용할 수 있습니다.
+
+Simple mode shows only the files needed for the chosen task, with preparation help when needed. It automatically prepares a workspace when applying a merged package. Full mode keeps the detailed authoring controls available.
+
 ## 시작하기 / Getting started
 
 Windows 64비트 배포판은 [Releases](https://github.com/auseong325-design/3ds-patch-universal-tool/releases)에서 ZIP을 받아 압축을 푼 뒤 실행하세요. Python과 .NET은 배포판에 포함되어 있습니다.

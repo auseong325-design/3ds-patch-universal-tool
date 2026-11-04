@@ -15,7 +15,7 @@ SCRIPT = r'''
 import os, pathlib, sys, tkinter
 from pathlib import Path
 from KoreanPatchManager import App
-from korean_patch_manager import core, merge, metadata, romforge, runtime
+from korean_patch_manager import core, merge, metadata, romforge, runtime, simple
 import TranslationPatcher
 root = Path(os.environ['KPM_VERIFY_PORTABLE'])
 scratch = Path(os.environ['KPM_VERIFY_SCRATCH'])
@@ -27,6 +27,7 @@ app = App()
 errors = []
 app.report_callback_exception = lambda *args: errors.append(args)
 app.withdraw(); app.update()
+assert app.mode.get() == '간편 모드'
 assert Path(app.vars['xdelta'].get()) == xdelta
 app.scenario.set('받은 통합 패키지 적용 · 배너 포함 가능'); app.update()
 assert 'RomForge' in app.checks_text.get('1.0', 'end')
@@ -45,6 +46,8 @@ for fmt in ('CCI', 'CIA', 'ZCCI'):
     result = merge.repack_bundle(bundle, base, fixture/'keys', output, fmt, bridge, xdelta, cia_version='0')
     assert result['checked_files'] == 1 and result['code_checked'] and output.is_file()
 assert metadata.identify(scratch/'result.cci')['title_id'] == m['title_id']
+result = simple.apply_merged_game(fixture/'game.cci', bundle, scratch/'simple.cci', 'CCI', '', bridge, xdelta)
+assert result['code_checked'] and (scratch/'simple.cci').is_file()
 print('OK: bundled Python/Tk, legacy import, xdelta, standalone bridge, merge CCI/CIA/ZCCI')
 '''
 
