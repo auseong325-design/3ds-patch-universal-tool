@@ -248,11 +248,13 @@ class EasyIntegrationTests(unittest.TestCase):
             self.assertIn('HOME 이름', package.summary)
             with self.assertRaisesRegex(ValueError, '하나만'):
                 merge.build_bundle(root / 'base', root / 'update', patch, root / 'both.zip', xdelta, icon=f / 'icon_ko.bin', title='x')
-            merge.build_bundle(root / 'base', root / 'update', patch, root / 'file.zip', xdelta, icon=f / 'icon_ko.bin')
-            for name, expected in (('merge.zip', '마리오&루이지 RPG3 DX'), ('file.zip', '새 이름')):
+            merge.build_bundle(root / 'base', root / 'update', patch, root / 'file.zip', xdelta, icon=f / 'icon_ko.bin', title_version=2096)
+            # the HOME Menu asks for the update unless the merged CIA carries the update's version
+            for name, expected, version in (('merge.zip', '마리오&루이지 RPG3 DX', (2 << 10) | 0x3FF), ('file.zip', '새 이름', 2096)):
                 # the rebuilt game must carry the new icon: extract it again and read the Korean title
                 made = root / (name + '.cia')
                 simple.apply_merged_game(f / 'game.cci', root / name, made, 'CIA', str(f / 'keys'), bridge, xdelta)
+                self.assertEqual(metadata.identify(made)['title_version'], version)
                 romforge.setup_workspace(made, f / 'keys', root / (name + '-check'), bridge)
                 rebuilt = (root / (name + '-check') / 'original_icon.bin').read_bytes()
                 self.assertEqual(metadata.smdh_titles(rebuilt)['ko'][0], expected)

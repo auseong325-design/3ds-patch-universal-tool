@@ -63,8 +63,8 @@ def apply_merged_game(game, package, output, fmt, keys, bridge, xdelta, log=None
         if log: log('1/3  원본 게임에서 임시 작업 폴더를 준비합니다.')
         romforge.setup_workspace(game, key_dir, temp / 'base', bridge)
         if log: log('2/3  통합 패키지 적용 및 리팩을 시작합니다.')
-        # CIA inputs retain their TMD version. Other inputs need an explicit base version.
-        version = '' if Path(game).suffix.lower() == '.cia' else '0'
+        # A CIA takes the merged update's version (see merge.repack_bundle); a CCI has no TMD version.
+        version = '' if fmt == 'CIA' else '0'
         result = merge.repack_bundle(package, temp / 'base', key_dir, output, fmt, bridge, xdelta,
                                      cia_version=version, log=log)
         if log: log('3/3  결과 파일 해시 검사를 마쳤습니다.')

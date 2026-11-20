@@ -57,6 +57,24 @@ def merged_exheader(base, update, base_id):
     return bytes(out)
 
 
+def update_title_version(update_header, update_rom=None):
+    """The TMD version a merged base must carry so the HOME Menu stops asking for the update.
+
+    The HOME Menu compares the installed version with the latest version it has heard of; with the update
+    merged into the base and the official update removed, only the base's TMD version is left. Prefer the
+    update CIA's own TMD version. Dumps often carry 0 there, so fall back to the update's remaster version
+    (exheader 0x0E, which is the major part of its title version) with the minor and micro parts maxed.
+    """
+    if update_rom and Path(update_rom).suffix.lower() == '.cia' and Path(update_rom).is_file():
+        try:
+            version = metadata.identify(update_rom)['title_version']
+            if version: return version
+        except (ValueError, OSError):
+            pass
+    remaster = struct.unpack_from('<H', bytes(update_header), 0x0E)[0]
+    return (remaster << 10) | 0x3FF if remaster else 0
+
+
 def _check_code_size(code, exheader):
     size = sum(struct.unpack_from('<I', exheader, off + 4)[0] for off in (0x10,0x20,0x30)) * 4096
     if len(code) != size: raise ValueError(f'코드 길이가 확장 헤더의 메모리 페이지 수와 다릅니다: {len(code)} / {size}')
@@ -83,8 +101,10 @@ def _delta(exe, src, target, patch, restored):
     if core.sha256(target) != core.sha256(restored): raise ValueError(f'xdelta 복원 검증 실패: {target}')
 
 
-def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, ips=None, banner=None, log=None, icon=None, title=None):
-    """icon is a ready SMDH file; title instead writes a Korean HOME Menu name into the base game's own icon."""
+def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, ips=None, banner=None, log=None, icon=None, title=None,
+                 title_version=None):
+    """icon is a ready SMDH file; title instead writes a Korean HOME Menu name into the base game's own icon.
+    title_version is the official update's TMD version when known; otherwise it is worked out from the update."""
     if icon and title: raise ValueError('아이콘 파일과 HOME 메뉴 이름 중 하나만 지정하세요.')
     base_root, base_project, base, base_baseline = _workspace(base_workspace)
     upd_root, upd_project, update, update_baseline = _workspace(update_workspace)
@@ -119,6 +139,7 @@ def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, 
                 'base_rom_sha256':core.sha256(base_project['original_rom']) if Path(base_project.get('original_rom','')).is_file() else None,
                 'update_rom_sha256':core.sha256(upd_project['original_rom']) if Path(upd_project.get('original_rom','')).is_file() else None,
                 'includes_ips':bool(ips), 'changes':[], 'components':{},
+                'cia_title_version':int(title_version) if title_version not in (None, '') else update_title_version(update_header, upd_project.get('original_rom')),
                 'notice':'본편에 업데이트를 통합한 패치입니다. 공식 업데이트 설치 상태와 게임 실행은 별도로 확인하세요.'}
     with tempfile.TemporaryDirectory(prefix='kpm-merge-', dir=output.parent) as td:
         td=Path(td); patch=td/'part.xdelta'; restored=td/'restored'; target=td/'target'
@@ -172,6 +193,7 @@ def _safe_rel(value):
 
 
 def repack_bundle(bundle, base_workspace, key_directory, output, fmt, bridge, xdelta, cia_version='', log=None):
+    """cia_version '' lets a CIA carry the merged update's version (from the package, else from its exheader)."""
     base_root, project, original, base_baseline = _workspace(base_workspace)
     with zipfile.ZipFile(bundle) as z:
         names=z.namelist()
@@ -213,6 +235,12 @@ def repack_bundle(bundle, base_workspace, key_directory, output, fmt, bridge, xd
                 src=base_root/('original_'+key+'.bin'); dst=td/(key+'.bin')
                 restore(src,'components/'+key+'.xdelta',entry,dst)
                 out_components[key]={**entry,'path':str(dst)}
+            if fmt.upper() == 'CIA' and str(cia_version).strip() == '':
+                version = manifest.get('cia_title_version')
+                if not isinstance(version, int) or not 0 <= version <= 65535:
+                    version = update_title_version((td/'exheader.bin').read_bytes())
+                cia_version = str(version)
+                if log: log(f'CIA 버전 번호를 업데이트에 맞춥니다: {cia_version}')
             cfg={'title_id':manifest['title_id'],'original':str(before),'edited':str(after),
                  'original_rom':project['original_rom'],'cia_version':cia_version}
             result=romforge.repack(cfg,key_directory,output,fmt,bridge,log,components=out_components)
