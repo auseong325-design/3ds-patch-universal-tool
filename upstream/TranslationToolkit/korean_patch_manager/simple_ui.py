@@ -230,7 +230,7 @@ class SimplePanel(ttk.Frame):
             if self.purpose.get() == 'merge':
                 if not runtime.bridge_path(Path(__file__).resolve().parents[1]).is_file(): raise ValueError('RomForge 실행 파일이 없습니다. 전체 모드에서 브리지를 준비하세요.')
                 if Path(values['output']).suffix.lower() != '.' + self.fmt.get().lower(): raise ValueError('출력 형식에 맞는 파일 이름을 새로 선택하세요.')
-                if self.fmt.get() == 'CIA': simple.validate_cia_keys(values['keys'])
+                if self.fmt.get() == 'CIA': simple.validate_cia_keys(values['keys'], values['game'])
             if self.purpose.get() == 'build': core.title_id(values['title_id'])
         except (ValueError, OSError, KeyError, TypeError, RuntimeError, zipfile.BadZipFile) as error:
             self.validation.configure(text=str(error), style='Warning.TLabel'); return

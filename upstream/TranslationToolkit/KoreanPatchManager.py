@@ -42,7 +42,7 @@ class App(tk.Tk):
         self.mode = tk.StringVar(value=EASY)
         self.details = tk.BooleanVar(value=False)
         self.vars = {k: tk.StringVar() for k in ('title_id', 'region', 'version', 'original', 'edited',
-                     'original_rom', 'code_ips', 'original_code', 'output', 'azahar', 'xdelta', 'host', 'port', 'user', 'password', 'keys', 'repack_format', 'cia_version', 'merge_base', 'merge_update', 'merge_patch', 'merge_ips', 'merge_banner')}
+                     'original_rom', 'code_ips', 'original_code', 'output', 'azahar', 'xdelta', 'host', 'port', 'user', 'password', 'keys', 'repack_format', 'cia_version', 'merge_base', 'merge_update', 'merge_patch', 'merge_ips', 'merge_banner', 'merge_title', 'merge_icon')}
         self.vars['port'].set('5000')
         self.vars['repack_format'].set('CCI')
         local_xdelta = Path(__file__).resolve().parent / 'tools' / 'xdelta-3.2.2' / 'xdelta3.exe'
@@ -168,11 +168,12 @@ class App(tk.Tk):
         for row, (key, label, kind) in enumerate([
             ('merge_base', '본편 작업 폴더', 'dir'), ('merge_update', '업데이트 작업 폴더', 'dir'),
             ('merge_patch', '번역 패치 RomFS 폴더 (선택)', 'dir'), ('merge_ips', '업데이트 코드용 IPS (선택)', 'file'),
-            ('merge_banner', '교체 HOME 배너 (선택)', 'file')]):
+            ('merge_banner', '교체 HOME 배너 (선택)', 'file'),
+            ('merge_title', 'HOME 메뉴 한국어 이름 (선택)', None), ('merge_icon', '교체 아이콘 SMDH (선택)', 'file')]):
             self.field(mt, row, key, label, kind)
-        ttk.Button(mt, text='본편 기준 통합 xdelta 패키지 생성', command=self.make_merge).grid(row=5, column=0, columnspan=2, sticky='w', pady=8)
-        ttk.Button(mt, text='통합 패키지를 본편에 적용 및 리팩', command=self.apply_merge).grid(row=6, column=0, columnspan=2, sticky='w', pady=8)
-        ttk.Label(mt, text='먼저 본편과 업데이트 각각에서 작업 폴더를 준비하세요. 패치 폴더는 전체 RomFS가 아닌 변경 파일만 넣습니다.\n통합 본편과 별도 업데이트가 함께 설치되면 업데이트가 우선될 수 있으므로 게임별로 확인하세요.', wraplength=900).grid(row=7, column=0, columnspan=3, sticky='w')
+        ttk.Button(mt, text='본편 기준 통합 xdelta 패키지 생성', command=self.make_merge).grid(row=7, column=0, columnspan=2, sticky='w', pady=8)
+        ttk.Button(mt, text='통합 패키지를 본편에 적용 및 리팩', command=self.apply_merge).grid(row=8, column=0, columnspan=2, sticky='w', pady=8)
+        ttk.Label(mt, text='먼저 본편과 업데이트 각각에서 작업 폴더를 준비하세요. 패치 폴더는 전체 RomFS가 아닌 변경 파일만 넣습니다.\n통합 본편과 별도 업데이트가 함께 설치되면 업데이트가 우선될 수 있으므로 게임별로 확인하세요.', wraplength=900).grid(row=9, column=0, columnspan=3, sticky='w')
         deploy = self.scroll_tab(book, '직접 전송'); deploy.columnconfigure(1, weight=1)
         for row, (key, label, kind) in enumerate([('azahar', 'Azahar 사용자 데이터 폴더', 'dir'), ('host', '3DS FTP 주소', None), ('port', 'FTP 포트', None), ('user', 'FTP 사용자 (선택)', None), ('password', 'FTP 암호 (저장 안 함)', 'password')]):
             self.field(deploy, row, key, label, kind)
@@ -451,7 +452,8 @@ class App(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension='.zip', filetypes=[('ZIP', '*.zip')])
         if not path: return
         def task():
-            report = merge.build_bundle(config['merge_base'], config['merge_update'], config['merge_patch'] or None, path, config['xdelta'], ips=config['merge_ips'] or None, banner=config['merge_banner'] or None, log=lambda line: self.messages.put(('progress', line)))
+            report = merge.build_bundle(config['merge_base'], config['merge_update'], config['merge_patch'] or None, path, config['xdelta'], ips=config['merge_ips'] or None, banner=config['merge_banner'] or None, log=lambda line: self.messages.put(('progress', line)),
+                                        icon=config['merge_icon'] or None, title=config['merge_title'] or None)
             return f"통합 패키지 생성: {len(report['changes'])}개 RomFS 파일; 구성 요소: {', '.join(report['components'])}\n{path}"
         self.run_job('통합 패키지 생성', task)
     def apply_merge(self):

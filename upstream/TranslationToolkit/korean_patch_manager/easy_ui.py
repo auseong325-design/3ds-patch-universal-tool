@@ -570,9 +570,9 @@ class EasyPanel(tk.Frame):
 
     def keys_problem(self):
         if not self.key_dir:
-            return '키 파일(aes_keys.txt)과 certs.bin이 든 폴더를 골라 주세요.'
+            return '키 파일(aes_keys.txt)이 든 폴더를 골라 주세요.'
         try:
-            simple.validate_cia_keys(self.key_dir)
+            simple.validate_cia_keys(self.key_dir, self.game.path if self.game else None)
         except ValueError as error:
             return str(error)
         return None

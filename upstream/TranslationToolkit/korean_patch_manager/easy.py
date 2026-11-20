@@ -114,6 +114,7 @@ class Package:
     file_count: int
     code_patch: bool = False
     banner: bool = False
+    home_title: str = ''
     layouts: dict = field(default_factory=dict)   # install: layout -> {title_id: {relative path: source name}}
     manifest: dict | None = None
     source: object = None
@@ -132,6 +133,7 @@ class Package:
             parts = ['게임 파일이 필요한 패치', f'파일 {self.file_count}개']
         if self.code_patch: parts.append('코드 패치 포함')
         if self.banner: parts.append('HOME 배너 포함')
+        if self.home_title: parts.append(f'HOME 이름 「{self.home_title}」')
         return '  ·  '.join(parts)
 
     def close(self):
@@ -205,7 +207,8 @@ def _classify(path, source):
         if title and manifest.get('format') == 'kpm-merge-v1':
             parts = manifest.get('components') or {}
             return Package(path, MERGE, title, len(manifest['changes']), bool(manifest.get('includes_ips')),
-                           'banner' in parts, manifest=manifest, source=source)
+                           'banner' in parts, str(manifest.get('home_title') or '') if 'icon' in parts else '',
+                           manifest=manifest, source=source)
         if title and manifest.get('format') in (None, 'kpm-xdelta-v2') and any(
                 n.startswith(('patches/', 'added/')) or n == 'code.ips' for n in names):
             return Package(path, DELTA, title, len(manifest['changes']), bool(manifest.get('code_ips_sha256')),

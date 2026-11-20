@@ -8,7 +8,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from korean_patch_manager import core, easy, merge, paint, romforge
+from korean_patch_manager import core, easy, merge, metadata, paint, romforge, simple
 
 TITLE = '00040000001CA900'
 
@@ -199,6 +199,37 @@ class PaintTests(unittest.TestCase):
         self.assertEqual(paint.app_icon(32, '#3B5BDB', '#2F49B8')[:4], b'\x89PNG')
 
 
+class HomeMenuTests(unittest.TestCase):
+    def test_title_slot_and_certificates_from_cia(self):
+        icon = bytearray(metadata.SMDH_SIZE); icon[:4] = b'SMDH'
+        english = 8 + 0x200
+        icon[english:english + 8] = 'Game'.encode('utf-16-le'); icon[english + 0x180:english + 0x190] = 'Nintendo'.encode('utf-16-le')
+        icon[0x2040:0x2050] = bytes(range(16))            # icon pixels must survive
+        renamed = metadata.smdh_with_title(bytes(icon), '마리오&루이지 RPG3 DX')
+        titles = metadata.smdh_titles(renamed)
+        self.assertEqual(titles['ko'], ('마리오&루이지 RPG3 DX', '마리오&루이지 RPG3 DX', 'Nintendo'))
+        self.assertEqual(titles['en'][0], 'Game')
+        korean = 8 + 7 * 0x200
+        self.assertEqual(renamed[:korean], bytes(icon[:korean]))
+        self.assertEqual(renamed[korean + 0x200:], bytes(icon[korean + 0x200:]))
+        for bad in ('', 'x' * 64, 'two\nlines'):
+            with self.assertRaises(ValueError):
+                metadata.smdh_with_title(bytes(icon), bad)
+        with self.assertRaisesRegex(ValueError, 'SMDH'):
+            metadata.smdh_titles(b'not an icon')
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            chain = b'\0' * 0x40 + b'Root-CA00000003' + b'\1' * 0x9B1
+            header = (0x2020).to_bytes(4, 'little') + bytes(4) + len(chain).to_bytes(4, 'little') + bytes(0x2014)
+            (root / 'game.cia').write_bytes(header.ljust(0x2040, b'\0') + chain + bytes(64))
+            self.assertEqual(metadata.cia_certificates(root / 'game.cia'), chain)
+            (root / 'game.cci').write_bytes(b'x' * 0x4000)
+            keys = root / 'keys'; keys.mkdir(); (keys / 'aes_keys.txt').write_text('common0=' + '0' * 32)
+            simple.validate_cia_keys(keys, root / 'game.cia')         # certs.bin comes from the CIA itself
+            with self.assertRaisesRegex(ValueError, 'certs.bin'):
+                simple.validate_cia_keys(keys, root / 'game.cci')
+
+
 @unittest.skipUnless(all(os.environ.get(k) for k in ('KPM_TEST_ROMFORGE_BRIDGE', 'KPM_TEST_ROMFORGE_FIXTURE', 'KPM_TEST_XDELTA')), '통합 시험 도구 필요')
 class EasyIntegrationTests(unittest.TestCase):
     def test_merge_and_delta_from_game_file_only(self):
@@ -210,8 +241,23 @@ class EasyIntegrationTests(unittest.TestCase):
             romforge.setup_workspace(f / 'game.cci', f / 'keys', root / 'base', bridge)
             romforge.setup_workspace(f / 'update.cci', f / 'keys', root / 'update', bridge)
             patch = root / 'patch'; patch.mkdir(); (patch / 'test.bin').write_bytes(b'translation')
-            merge.build_bundle(root / 'base', root / 'update', patch, root / 'merge.zip', xdelta)
+            merge.build_bundle(root / 'base', root / 'update', patch, root / 'merge.zip', xdelta,
+                               banner=f / 'banner_ko.bin', title='마리오&루이지 RPG3 DX')
             package = easy.detect_package(root / 'merge.zip'); self.addCleanup(package.close)
+            self.assertEqual((package.banner, package.home_title), (True, '마리오&루이지 RPG3 DX'))
+            self.assertIn('HOME 이름', package.summary)
+            with self.assertRaisesRegex(ValueError, '하나만'):
+                merge.build_bundle(root / 'base', root / 'update', patch, root / 'both.zip', xdelta, icon=f / 'icon_ko.bin', title='x')
+            merge.build_bundle(root / 'base', root / 'update', patch, root / 'file.zip', xdelta, icon=f / 'icon_ko.bin')
+            for name, expected in (('merge.zip', '마리오&루이지 RPG3 DX'), ('file.zip', '새 이름')):
+                # the rebuilt game must carry the new icon: extract it again and read the Korean title
+                made = root / (name + '.cia')
+                simple.apply_merged_game(f / 'game.cci', root / name, made, 'CIA', str(f / 'keys'), bridge, xdelta)
+                romforge.setup_workspace(made, f / 'keys', root / (name + '-check'), bridge)
+                rebuilt = (root / (name + '-check') / 'original_icon.bin').read_bytes()
+                self.assertEqual(metadata.smdh_titles(rebuilt)['ko'][0], expected)
+                if name == 'merge.zip':
+                    self.assertEqual((root / (name + '-check') / 'original_banner.bin').read_bytes(), (f / 'banner_ko.bin').read_bytes())
             game = easy.check_game(f / 'game.cci', package)
             self.assertEqual(game.title_id, package.title_id)
             phases = []

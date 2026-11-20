@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
-from . import core, romforge, runtime
+from . import core, metadata, romforge, runtime
 
 FORMAT = 'kpm-merge-v1'
 
@@ -30,7 +30,7 @@ def _workspace(path):
     source_rom = project.get('original_rom', '')
     if source_rom and Path(source_rom).is_file() and core.sha256(source_rom) != baseline.get('source_sha256'):
         raise ValueError('작업 폴더를 만든 원본 게임 파일의 해시가 변경되었습니다.')
-    for name in ('code','exheader','banner'):
+    for name in ('code','exheader','banner','icon'):
         path = root / ('original_'+name+'.bin')
         if path.is_file() and (not baseline.get('components',{}).get(name) or core.sha256(path) != baseline['components'][name]):
             raise ValueError(f'작업 폴더 원본 {name} 해시 불일치')
@@ -83,7 +83,9 @@ def _delta(exe, src, target, patch, restored):
     if core.sha256(target) != core.sha256(restored): raise ValueError(f'xdelta 복원 검증 실패: {target}')
 
 
-def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, ips=None, banner=None, log=None):
+def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, ips=None, banner=None, log=None, icon=None, title=None):
+    """icon is a ready SMDH file; title instead writes a Korean HOME Menu name into the base game's own icon."""
+    if icon and title: raise ValueError('아이콘 파일과 HOME 메뉴 이름 중 하나만 지정하세요.')
     base_root, base_project, base, base_baseline = _workspace(base_workspace)
     upd_root, upd_project, update, update_baseline = _workspace(update_workspace)
     base_id, update_id = core.title_id(base_project['title_id']), core.title_id(upd_project['title_id'])
@@ -125,6 +127,14 @@ def build_bundle(base_workspace, update_workspace, patch_romfs, output, xdelta, 
         if banner:
             if not (base_root/'original_banner.bin').is_file(): raise ValueError('본편 작업 폴더에 원본 배너가 없습니다.')
             components['banner']=(base_root/'original_banner.bin',Path(banner))
+        if icon or title:
+            original_icon = base_root/'original_icon.bin'
+            if not original_icon.is_file(): raise ValueError('본편 작업 폴더에 원본 아이콘이 없습니다. 최신 버전으로 작업 폴더를 다시 준비하세요.')
+            new_icon = td/'icon'
+            new_icon.write_bytes(metadata.smdh_with_title(original_icon.read_bytes(), title) if title else Path(icon).read_bytes())
+            metadata.smdh_titles(new_icon.read_bytes())
+            components['icon']=(original_icon,new_icon)
+            manifest['home_title']=metadata.smdh_titles(new_icon.read_bytes())['ko'][0]
         with zipfile.ZipFile(td/'package.zip', 'w', compression=zipfile.ZIP_DEFLATED) as z:
             for rel in sorted(candidates):
                 src=base_files[rel]; dst=patch_files.get(rel, update_files.get(rel))
@@ -172,7 +182,7 @@ def repack_bundle(bundle, base_workspace, key_directory, output, fmt, bridge, xd
         if manifest.get('format')!=FORMAT: raise ValueError('지원하지 않는 통합 패키지입니다.')
         if core.title_id(project['title_id']) != core.title_id(manifest['title_id']): raise ValueError('본편 Title ID 불일치')
         components=manifest.get('components',{})
-        if set(components) not in ({'code','exheader'},{'code','exheader','banner'}): raise ValueError('구성 요소 목록이 올바르지 않습니다.')
+        if not {'code','exheader'} <= set(components) <= {'code','exheader','banner','icon'}: raise ValueError('구성 요소 목록이 올바르지 않습니다.')
         changes=manifest.get('changes')
         if not isinstance(changes,list): raise ValueError('RomFS 목록이 올바르지 않습니다.')
         output=Path(output).resolve()

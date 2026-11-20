@@ -17,6 +17,7 @@ byte[] code = Enumerable.Range(0, 4096).Select(i => (byte)i).ToArray();
 await File.WriteAllBytesAsync(Path.Combine(root, "code.bin"), code);
 await File.WriteAllBytesAsync(Path.Combine(root, "code.ips"), [.. "PATCH"u8.ToArray(), 0,0,4,0,2,0xAA,0xBB, .. "EOF"u8.ToArray()]);
 await File.WriteAllBytesAsync(Path.Combine(root, "banner_ko.bin"), "new banner"u8.ToArray());
+await File.WriteAllBytesAsync(Path.Combine(root, "icon_ko.bin"), Smdh("새 이름"));
 ulong baseTitle = 0x0004000000123456;
 await Create(Path.Combine(root,"game.cci"),orig,baseTitle,baseTitle,code,false);
 byte[] updateCode=(byte[])code.Clone(); updateCode[20]=0xAB;
@@ -34,7 +35,8 @@ static async Task Create(string outputPath, string original, ulong title, ulong 
     };
     var exefs = ExeFsPacker.Pack([
         new ExeFsFile { Name = ".code", Data = code, ExpectedHash = [], HashValid = false },
-        new ExeFsFile { Name = "banner", Data = "old banner"u8.ToArray(), ExpectedHash = [], HashValid = false }
+        new ExeFsFile { Name = "banner", Data = "old banner"u8.ToArray(), ExpectedHash = [], HashValid = false },
+        new ExeFsFile { Name = "icon", Data = Smdh("Old Name"), ExpectedHash = [], HashValid = false }
     ]);
     byte[] exheader = new byte[0x800];
     BinaryPrimitives.WriteUInt32LittleEndian(exheader.AsSpan(0x14), 1);
@@ -48,4 +50,15 @@ static async Task Create(string outputPath, string original, ulong title, ulong 
     var packed = await RepackedNcsdSource.CreateAsync(dict, [new Contents { ContentIndex = 0 }]);
     await using var output = File.Open(outputPath, FileMode.CreateNew, FileAccess.ReadWrite);
     await NcsdBuilder.BuildAsync(packed, output);
+}
+
+// A blank SMDH (0x36C0 bytes) whose Korean title slot (index 7) holds the given name.
+static byte[] Smdh(string title)
+{
+    byte[] data = new byte[0x36C0];
+    "SMDH"u8.CopyTo(data);
+    byte[] text = System.Text.Encoding.Unicode.GetBytes(title);
+    text.CopyTo(data, 8 + 7 * 0x200);
+    text.CopyTo(data, 8 + 7 * 0x200 + 0x80);
+    return data;
 }

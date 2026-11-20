@@ -52,6 +52,54 @@ def identify(path):
         raise ValueError('지원되는 CIA, CCI/3DS 또는 NCCH 헤더가 아닙니다. ZCCI는 아직 지원하지 않습니다.')
 
 
+SMDH_SIZE = 0x36C0
+SMDH_LANGUAGES = ('ja', 'en', 'fr', 'de', 'it', 'es', 'zh-CN', 'ko', 'nl', 'pt', 'ru', 'zh-TW')
+
+
+def smdh_titles(data):
+    """Short title, long title and publisher for each language slot of an SMDH (ExeFS icon)."""
+    if len(data) != SMDH_SIZE or data[:4] != b'SMDH':
+        raise ValueError('HOME 메뉴 아이콘(SMDH) 파일이 아닙니다. 크기는 14,016바이트이고 SMDH로 시작해야 합니다.')
+    rows = {}
+    for index, language in enumerate(SMDH_LANGUAGES):
+        base = 8 + index * 0x200
+        text = lambda start, size: data[base + start:base + start + size].decode('utf-16-le', errors='replace').split('\0')[0]
+        rows[language] = (text(0, 0x80), text(0x80, 0x100), text(0x180, 0x80))
+    return rows
+
+
+def smdh_with_title(data, title, language='ko'):
+    """Copy of an SMDH whose title for one language is replaced; icons, other languages and flags stay."""
+    current = smdh_titles(data)[language]
+    title = title.strip()
+    if not title or len(title.encode('utf-16-le')) > 0x7E or any(ord(c) < 32 for c in title):
+        raise ValueError('HOME 메뉴 이름은 1~63자의 한 줄 글자여야 합니다.')
+    field = lambda text, size: text.encode('utf-16-le').ljust(size, b'\0')
+    base = 8 + SMDH_LANGUAGES.index(language) * 0x200
+    result = bytearray(data)
+    result[base:base + 0x180] = field(title, 0x80) + field(title, 0x100)
+    if not current[2]:      # keep the publisher unless the slot never had one
+        result[base + 0x180:base + 0x200] = field(smdh_titles(data)['en'][2] or 'Nintendo', 0x80)
+    return bytes(result)
+
+
+def cia_certificates(path):
+    """The certificate chain stored in a CIA; it is the same public data RomForge expects as certs.bin."""
+    path = Path(path)
+    length = path.stat().st_size
+    with path.open('rb') as stream:
+        header = _read(stream, 0, 0x20, length)
+        if int.from_bytes(header[:4], 'little') != 0x2020:
+            raise ValueError('CIA 파일이 아닙니다.')
+        size = int.from_bytes(header[8:12], 'little')
+        if not 0x300 <= size <= 0x4000:
+            raise ValueError('CIA의 인증서 영역 크기가 올바르지 않습니다.')
+        chain = _read(stream, (0x2020 + 63) & ~63, size, length)
+    if b'Root-CA' not in chain:
+        raise ValueError('CIA의 인증서 영역을 읽을 수 없습니다.')
+    return chain
+
+
 def _ncch(data, fmt):
     tid = int.from_bytes(data[0x118:0x120], 'little')
     if not tid: raise ValueError('NCCH Program ID가 비어 있습니다.')

@@ -68,7 +68,7 @@ try
     var applied = service.LastAppliedRomfsPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
     if (!expected.SetEquals(applied))
         throw new InvalidDataException($"RomFS 적용 파일 불일치. 누락: {string.Join(", ", expected.Except(applied, StringComparer.OrdinalIgnoreCase))}");
-    if ((request.CodeIps || request.ExpectedCodeSha256 != null || request.ExpectedExheaderSha256 != null || request.ExpectedBannerSha256 != null) && service.LastExeFsPatchedCount == 0) throw new InvalidDataException("코드 패치가 적용되지 않았습니다.");
+    if ((request.CodeIps || request.ExpectedCodeSha256 != null || request.ExpectedExheaderSha256 != null || request.ExpectedBannerSha256 != null || request.ExpectedIconSha256 != null) && service.LastExeFsPatchedCount == 0) throw new InvalidDataException("코드 패치가 적용되지 않았습니다.");
     if (format == RepackOutputFormat.Cia)
     {
         await using var cia = await new CiaReader(keyStore).OpenAsync(output);
@@ -107,12 +107,17 @@ static async Task<byte[]?> VerifyGame(string path, KeyStore keys, Request reques
         string? expectedExheader = result ? request.ExpectedExheaderSha256 : request.OriginalExheaderSha256;
         if (expectedExheader != null && (unpack.ExHeader == null || !string.Equals(Convert.ToHexString(SHA256.HashData(unpack.ExHeader)), expectedExheader, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException($"{(result ? "리팩 결과" : "원본")} exheader 해시 불일치");
-        string? expectedBanner = result ? request.ExpectedBannerSha256 : request.OriginalBannerSha256;
-        if (expectedBanner != null)
+        // HOME Menu files in the ExeFS: the 3D banner and the SMDH icon (which carries the title text).
+        foreach (var (name, label, expectedHash) in new[]
         {
-            byte[]? banner = unpack.ExeFs?.Files.FirstOrDefault(f => f.Name == "banner")?.Data;
-            if (banner == null || !string.Equals(Convert.ToHexString(SHA256.HashData(banner)), expectedBanner, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"{(result ? "리팩 결과" : "원본")} 배너 해시 불일치");
+            ("banner", "배너", result ? request.ExpectedBannerSha256 : request.OriginalBannerSha256),
+            ("icon", "아이콘(게임 이름)", result ? request.ExpectedIconSha256 : request.OriginalIconSha256),
+        })
+        {
+            if (expectedHash == null) continue;
+            byte[]? data = unpack.ExeFs?.Files.FirstOrDefault(f => f.Name == name)?.Data;
+            if (data == null || !string.Equals(Convert.ToHexString(SHA256.HashData(data)), expectedHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"{(result ? "리팩 결과" : "원본")} {label} 해시 불일치");
         }
         if (request.Files.Count > 0 && unpack.RomFs == null) throw new InvalidDataException("게임에 RomFS가 없습니다.");
         foreach (var entry in request.Files)
@@ -191,8 +196,11 @@ static async Task<(string TitleId, int Files, bool Code)> ExtractWorkspace(strin
                 throw new InvalidDataException($"추출 파일 해시 불일치: {file.FullPath}");
         }
         if (unpack.ExHeader != null) await File.WriteAllBytesAsync(Path.Combine(directory, "original_exheader.bin"), unpack.ExHeader);
-        byte[]? banner = unpack.ExeFs?.Files.FirstOrDefault(f => f.Name == "banner")?.Data;
-        if (banner != null) await File.WriteAllBytesAsync(Path.Combine(directory, "original_banner.bin"), banner);
+        foreach (string name in new[] { "banner", "icon" })
+        {
+            byte[]? data = unpack.ExeFs?.Files.FirstOrDefault(f => f.Name == name)?.Data;
+            if (data != null) await File.WriteAllBytesAsync(Path.Combine(directory, $"original_{name}.bin"), data);
+        }
         byte[]? code = unpack.ExeFs?.Files.FirstOrDefault(f => f.Name == ".code")?.Data;
         if (code != null)
         {
@@ -227,6 +235,8 @@ internal sealed class Request
     public string? ExpectedExheaderSha256 { get; set; }
     public string? OriginalBannerSha256 { get; set; }
     public string? ExpectedBannerSha256 { get; set; }
+    public string? OriginalIconSha256 { get; set; }
+    public string? ExpectedIconSha256 { get; set; }
     public List<PatchFile> Files { get; set; } = [];
 }
 internal sealed class PatchFile

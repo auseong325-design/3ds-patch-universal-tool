@@ -41,8 +41,8 @@ romforge.setup_workspace(fixture/'game.cci', fixture/'keys', base, bridge)
 romforge.setup_workspace(fixture/'update.cci', fixture/'keys', update, bridge)
 patch = scratch/'patch'; patch.mkdir(); (patch/'test.bin').write_bytes(b'Korean text')
 bundle = scratch/'merge.zip'
-m = merge.build_bundle(base, update, patch, bundle, xdelta, ips=fixture/'code.ips', banner=fixture/'banner_ko.bin')
-assert len(m['changes']) == 1 and 'banner' in m['components']
+m = merge.build_bundle(base, update, patch, bundle, xdelta, ips=fixture/'code.ips', banner=fixture/'banner_ko.bin', title='마리오&루이지 RPG3 DX')
+assert len(m['changes']) == 1 and {'banner', 'icon'} <= set(m['components']) and m['home_title'] == '마리오&루이지 RPG3 DX'
 for fmt in ('CCI', 'CIA', 'ZCCI'):
     output = scratch/('result.'+fmt.lower())
     result = merge.repack_bundle(bundle, base, fixture/'keys', output, fmt, bridge, xdelta, cia_version='0')

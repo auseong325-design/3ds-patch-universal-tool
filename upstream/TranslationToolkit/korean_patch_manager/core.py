@@ -397,11 +397,14 @@ def apply_xdelta_bundle(bundle, original, output, executable, original_rom=None,
     return len(changes)
 
 
+COMPONENT_FILES = {'code': 'exefs/code.bin', 'exheader': 'exheader.bin', 'banner': 'exefs/banner.bin', 'icon': 'exefs/icon.bin'}
+
+
 def build_romforge(config, output, components=None):
     """Create the documented RomForge 3DS LayeredFS patch layout."""
     report = inspect(config)
     components = components or {}
-    if set(components) - {'code', 'exheader', 'banner'}: raise ValueError('지원하지 않는 구성 요소입니다.')
+    if set(components) - set(COMPONENT_FILES): raise ValueError('지원하지 않는 구성 요소입니다.')
     if components and report['code_ips_sha256']: raise ValueError('통합 코드와 code.ips는 동시에 사용할 수 없습니다.')
     if report['removed']: raise ValueError('삭제된 파일은 RomForge 패키지로 표현할 수 없습니다.')
     if any(entry['original_sha256'] is None for entry in report['changes']):
@@ -426,7 +429,7 @@ def build_romforge(config, output, components=None):
                 if sha256(config['code_ips']) != report['code_ips_sha256']: raise ValueError('IPS 파일이 변경되었습니다.')
                 z.write(config['code_ips'], 'code.ips')
             for key, entry in components.items():
-                name = {'code':'exefs/code.bin', 'exheader':'exheader.bin', 'banner':'exefs/banner.bin'}[key]
+                name = COMPONENT_FILES[key]
                 if sha256(entry['path']) != entry['modified_sha256']: raise ValueError(f'구성 요소가 변경되었습니다: {key}')
                 z.write(entry['path'], name)
         with zipfile.ZipFile(tmp) as z:
@@ -438,8 +441,7 @@ def build_romforge(config, output, components=None):
             if report['code_ips_sha256'] and zip_sha256(z, 'code.ips') != report['code_ips_sha256']:
                 raise ValueError('ZIP IPS 해시 불일치')
             for key, entry in components.items():
-                name = {'code':'exefs/code.bin', 'exheader':'exheader.bin', 'banner':'exefs/banner.bin'}[key]
-                if zip_sha256(z, name) != entry['modified_sha256']: raise ValueError(f'ZIP 구성 요소 해시 불일치: {key}')
+                if zip_sha256(z, COMPONENT_FILES[key]) != entry['modified_sha256']: raise ValueError(f'ZIP 구성 요소 해시 불일치: {key}')
         shutil.move(str(tmp), str(output))
     return report
 

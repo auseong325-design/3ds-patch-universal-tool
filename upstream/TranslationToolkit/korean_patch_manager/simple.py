@@ -3,12 +3,18 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
-from . import core, merge, romforge
+import shutil
+from . import core, merge, metadata, romforge
 
 
-def validate_cia_keys(keys):
-    if not keys or not (Path(keys) / 'certs.bin').is_file():
-        raise ValueError('키 폴더에 certs.bin이 없습니다. 인증서 준비 방법을 확인하세요.')
+def validate_cia_keys(keys, game=None):
+    """certs.bin may be missing when the game itself is a CIA: its certificate chain is used instead."""
+    if not keys or not Path(keys).is_dir():
+        raise ValueError('키 파일(aes_keys.txt)이 든 폴더를 골라 주세요.')
+    if not (Path(keys) / 'certs.bin').is_file():
+        if not game or Path(game).suffix.lower() != '.cia':
+            raise ValueError('키 폴더에 certs.bin이 없습니다. 인증서 준비 방법을 확인하세요.')
+        metadata.cia_certificates(game)
     path = Path(keys) / 'aes_keys.txt'
     if path.is_file() and path.stat().st_size <= 1024 * 1024:
         for line in path.read_text(encoding='utf-8-sig').splitlines():
@@ -41,13 +47,19 @@ def apply_merged_game(game, package, output, fmt, keys, bridge, xdelta, log=None
     output = Path(output).resolve()
     if output.exists():
         raise ValueError('결과 파일이 이미 있습니다. 새 파일 이름을 선택하세요.')
-    if fmt == 'CIA': validate_cia_keys(keys)
+    if fmt == 'CIA': validate_cia_keys(keys, game)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='kpm-simple-', dir=output.parent) as td:
         temp = Path(td)
         if not keys:
             (temp / 'keys').mkdir()
         key_dir = Path(keys) if keys else temp / 'keys'
+        if fmt == 'CIA' and not (key_dir / 'certs.bin').is_file():
+            # Work on a private copy of the key folder so the user's folder is never written to.
+            shutil.copytree(key_dir, temp / 'keys-with-certs')
+            key_dir = temp / 'keys-with-certs'
+            (key_dir / 'certs.bin').write_bytes(metadata.cia_certificates(game))
+            if log: log('게임 CIA에 들어 있는 인증서를 사용합니다.')
         if log: log('1/3  원본 게임에서 임시 작업 폴더를 준비합니다.')
         romforge.setup_workspace(game, key_dir, temp / 'base', bridge)
         if log: log('2/3  통합 패키지 적용 및 리팩을 시작합니다.')

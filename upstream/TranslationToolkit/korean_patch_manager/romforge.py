@@ -148,12 +148,13 @@ def setup_workspace(game_file, key_directory, output_directory, bridge_dll):
             romfs_hashes[rel] = digest
         baseline = {'format':'kpm-workspace-v1', 'title_id':result['title_id'], 'source_sha256':source_hash,
                     'romfs':romfs_hashes, 'components':{name:core.sha256(stage/('original_'+name+'.bin'))
-                      for name in ('code','exheader','banner') if (stage/('original_'+name+'.bin')).is_file()}}
+                      for name in ('code','exheader','banner','icon') if (stage/('original_'+name+'.bin')).is_file()}}
         (stage/'workspace-manifest.json').write_text(json.dumps(baseline,ensure_ascii=False,indent=2),encoding='utf-8')
         project = {'title_id':result['title_id'], 'original':str(output/'original'), 'edited':str(output/'edited'),
                    'original_rom':str(game), 'original_code':str(output/'original_code.bin') if result['code'] else '',
                    'original_exheader':str(output/'original_exheader.bin') if (stage/'original_exheader.bin').is_file() else '',
                    'original_banner':str(output/'original_banner.bin') if (stage/'original_banner.bin').is_file() else '',
+                   'original_icon':str(output/'original_icon.bin') if (stage/'original_icon.bin').is_file() else '',
                    'keys':str(keys), 'repack_format':'CCI', 'port':'5000'}
         (stage/'project.json').write_text(json.dumps(project,ensure_ascii=False,indent=2),encoding='utf-8')
         if output.exists(): raise ValueError('작업 폴더가 이미 있습니다.')

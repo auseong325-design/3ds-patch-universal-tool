@@ -73,7 +73,7 @@ def write_text(path, value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--version', default='0.3.0')
+    parser.add_argument('--version', default='0.3.1')
     parser.add_argument('--output', type=Path, default=ROOT / 'dist' / '3DS-Korean-Patch-Manager-Windows-x64')
     args = parser.parse_args()
     out = args.output.resolve()
