@@ -10,21 +10,36 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from korean_patch_manager import core, metadata, tools, romforge, merge, guidance, runtime, simple_ui
+from korean_patch_manager import core, metadata, tools, romforge, merge, guidance, runtime, simple_ui, easy_ui, paint
+
+EASY, SIMPLE, FULL = '초간단 모드', '간편 모드', '전체 모드'
+
+
+def crisp_text():
+    """Ask Windows not to bitmap-stretch the window on scaled displays. Must run before the first window."""
+    if os.name == 'nt':
+        import ctypes
+        try: ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            try: ctypes.windll.user32.SetProcessDPIAware()
+            except (AttributeError, OSError): pass
 
 
 class App(tk.Tk):
     def __init__(self):
+        crisp_text()
         super().__init__()
-        self.title('3DS 한글패치 매니저 — Translation Toolkit 포크')
-        self.geometry('1020x830')
-        self.minsize(760, 600)
+        self.title('3DS 한글패치 매니저')
+        self.ui_scale = max(1.0, self.winfo_fpixels('1i') / 96.0)
+        self.icons = [tk.PhotoImage(master=self, data=paint.app_icon(size, '#3B5BDB', '#2B44AD'), format='png') for size in (64, 32, 16)]
+        self.iconphoto(True, *self.icons)
+        self.fit_window(860, 660, 620, 520, centre=True)
         self.project = None
         self.messages = queue.Queue()
         self.busy = False
         self.current_job = ''
         self.job_callback = None
-        self.mode = tk.StringVar(value='간편 모드')
+        self.mode = tk.StringVar(value=EASY)
         self.details = tk.BooleanVar(value=False)
         self.vars = {k: tk.StringVar() for k in ('title_id', 'region', 'version', 'original', 'edited',
                      'original_rom', 'code_ips', 'original_code', 'output', 'azahar', 'xdelta', 'host', 'port', 'user', 'password', 'keys', 'repack_format', 'cia_version', 'merge_base', 'merge_update', 'merge_patch', 'merge_ips', 'merge_banner')}
@@ -33,7 +48,37 @@ class App(tk.Tk):
         local_xdelta = Path(__file__).resolve().parent / 'tools' / 'xdelta-3.2.2' / 'xdelta3.exe'
         if local_xdelta.is_file(): self.vars['xdelta'].set(str(local_xdelta))
         self.make_ui()
+        self.protocol('WM_DELETE_WINDOW', self.close)
         self.poll_timer = self.after(100, self.poll)
+
+    def fit_window(self, width, height, min_width, min_height, centre=False):
+        """Sizes are given for a 100% display; they follow the display scale and never exceed the screen."""
+        s = self.ui_scale
+        room_w, room_h = self.winfo_screenwidth() - int(40 * s), self.winfo_screenheight() - int(100 * s)
+        width, height = min(int(width * s), room_w), min(int(height * s), room_h)
+        self.minsize(min(int(min_width * s), width), min(int(min_height * s), height))
+        self.update_idletasks()
+        if not centre:
+            if self.winfo_width() >= width and self.winfo_height() >= height:
+                return
+            width, height = max(width, self.winfo_width()), max(height, self.winfo_height())
+        self.geometry(f'{width}x{height}+{max(0, (self.winfo_screenwidth() - width) // 2)}+{max(0, (room_h - height) // 2)}')
+
+    def dark_title_bar(self, dark):
+        if os.name != 'nt':
+            return
+        import ctypes
+        try:
+            value = ctypes.c_int(1 if dark else 0)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.frame(), 16), 20, ctypes.byref(value), ctypes.sizeof(value))
+        except (AttributeError, OSError, ValueError, tk.TclError):
+            pass
+
+    def close(self):
+        if (self.busy or self.easy_panel.busy) and not messagebox.askyesno(
+                '작업 중', '아직 작업이 끝나지 않았습니다.\n지금 닫으면 만들던 임시 파일이 남을 수 있습니다. 닫을까요?', parent=self):
+            return
+        self.destroy()
 
     def destroy(self):
         if getattr(self, 'poll_timer', None):
@@ -47,7 +92,7 @@ class App(tk.Tk):
         style.configure('Success.TLabel', foreground='#267044')
         style.configure('Warning.TLabel', foreground='#965800')
         style.configure('Error.TLabel', foreground='#ac3333')
-        outer = ttk.Frame(self, padding=12); outer.pack(fill='both', expand=True)
+        outer = self.outer = ttk.Frame(self, padding=12)
         header = ttk.Frame(outer); header.pack(fill='x')
         self.project_buttons = ttk.Frame(header)
         self.project_buttons.pack(side='left')
@@ -56,7 +101,8 @@ class App(tk.Tk):
         self.legacy_button = ttk.Button(header, text='기존 Toolkit CLI 실행', command=self.legacy)
         self.legacy_button.pack(side='right')
         ttk.Button(header, text='도움말  F1', command=self.show_help).pack(side='right', padx=(0, 8))
-        ttk.Combobox(header, textvariable=self.mode, values=('간편 모드', '전체 모드'), state='readonly', width=12).pack(side='right', padx=(0, 8))
+        ttk.Combobox(header, textvariable=self.mode, values=(EASY, SIMPLE, FULL), state='readonly', width=12).pack(side='right', padx=(0, 8))
+        ttk.Button(header, text='← 초간단 모드', command=lambda: self.mode.set(EASY)).pack(side='right', padx=(0, 8))
         self.tab_hint = ttk.Label(outer, text='', style='Info.TLabel', wraplength=900)
         self.tab_hint.pack(anchor='w', pady=6)
         book = self.book = ttk.Notebook(outer)
@@ -156,12 +202,28 @@ class App(tk.Tk):
         scroll = ttk.Scrollbar(logframe, command=self.log.yview); scroll.pack(side='right', fill='y'); self.log.configure(yscrollcommand=scroll.set)
         book.pack(side='top', fill='both', expand=True)
         self.simple_panel = simple_ui.SimplePanel(outer, self)
+        self.easy_panel = easy_ui.EasyPanel(self, self)
+        self.bind('<Return>', lambda event: self.easy_panel.key_enter() if self.mode.get() == EASY else None)
+        self.bind('<Escape>', lambda event: self.easy_panel.key_escape() if self.mode.get() == EASY else None)
         self.mode.trace_add('write', self.update_mode)
         self.update_guidance(); self.update_tab_hint()
         self.update_mode()
 
     def update_mode(self, *_):
-        simple_mode = self.mode.get() == '간편 모드'
+        if self.mode.get() == EASY:
+            if self.busy:      # a job started in the other modes reports there; stay until it ends
+                self.mode.set(SIMPLE); return
+            self.outer.pack_forget()
+            self.easy_panel.pack(fill='both', expand=True)
+            self.dark_title_bar(self.easy_panel.dark)
+            return
+        if self.easy_panel.busy:
+            self.mode.set(EASY); return
+        self.easy_panel.pack_forget()
+        self.outer.pack(fill='both', expand=True)
+        self.dark_title_bar(False)
+        self.fit_window(1020, 830, 760, 600)
+        simple_mode = self.mode.get() == SIMPLE
         self.book.pack_forget(); self.simple_panel.pack_forget()
         self.tab_hint.pack_forget(); self.project_buttons.pack_forget(); self.legacy_button.pack_forget()
         if simple_mode:
@@ -203,7 +265,7 @@ class App(tk.Tk):
         messagebox.showinfo(label, guidance.FIELD_HELP.get(key, '이 항목의 값을 입력하세요.'), parent=self)
 
     def select_tab(self, name):
-        self.mode.set('전체 모드')
+        self.mode.set(FULL)
         self.book.select(self.tab_frames[name])
 
     def open_scenario_tab(self):
@@ -255,7 +317,10 @@ class App(tk.Tk):
             self.tab_hint.configure(wraplength=width)
 
     def show_help(self):
-        if self.mode.get() == '간편 모드':
+        if self.mode.get() == EASY:
+            self.easy_panel.open_help()
+            return
+        if self.mode.get() == SIMPLE:
             self.simple_panel.help()
             return
         name = self.book.tab(self.book.select(), 'text')

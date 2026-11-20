@@ -13,7 +13,8 @@ class SimpleUITests(unittest.TestCase):
         app.report_callback_exception = lambda *args: errors.append(args)
         try:
             app.withdraw(); app.update()
-            self.assertEqual(app.mode.get(), '간편 모드')
+            self.assertEqual(app.mode.get(), '초간단 모드')
+            app.mode.set('간편 모드'); app.update()
             panel = app.simple_panel
             panel.next(); app.update()
             self.assertEqual([key for key, _ in panel.required_fields()], ['game', 'package', 'output'])

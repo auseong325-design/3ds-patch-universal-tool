@@ -4,9 +4,11 @@
 
 This tool helps creators and players prepare and apply 3DS translation patches. It supports file-level patches, Luma3DS and Azahar packages, and rebuilding a game with an update, translation and optional HOME banner. The interface and built-in help are currently in Korean.
 
-간편 모드는 목적을 고르면 필요한 파일만 보여 주며, 준비 방법 도움말을 제공합니다. 통합 패키지 적용에 필요한 작업 폴더는 자동으로 준비합니다. 세부 제작 기능은 전체 모드에서 사용할 수 있습니다.
+![초간단 모드 / Easy mode](docs/easy-mode.png)
 
-Simple mode shows only the files needed for the chosen task, with preparation help when needed. It automatically prepares a workspace when applying a merged package. Full mode keeps the detailed authoring controls available.
+처음 화면은 **초간단 모드**입니다. 받은 패치 ZIP을 창에 끌어다 놓고, 플레이할 곳(닌텐도 3DS 또는 PC)을 고른 뒤 시작을 누르면 됩니다. 패치 종류는 프로그램이 알아내며, 설치용 ZIP은 SD 카드나 에뮬레이터 폴더에 바로 넣고, 게임 파일이 필요한 패치는 본인의 게임 파일을 하나 더 받아 처리합니다. 이미 다른 패치가 들어 있으면 먼저 물어본 뒤 기존 폴더를 백업 폴더로 옮깁니다. 패치를 직접 만드는 기능은 오른쪽 위 「제작자 도구」(간편 모드·전체 모드)에 있습니다.
+
+The first screen is **Easy mode**: drop the patch ZIP you received onto the window, choose where you play (Nintendo 3DS or PC) and press start. The tool works out the patch type itself. A ready-to-install ZIP is copied to the SD card or the emulator folder; a patch that needs the game asks for your own game file. If another patch is already installed, the tool asks first and moves the existing folder to a backup folder. Authoring features remain under "제작자 도구" (Simple and Full modes) at the top right.
 
 ## 시작하기 / Getting started
 

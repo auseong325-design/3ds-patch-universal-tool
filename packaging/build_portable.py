@@ -73,7 +73,7 @@ def write_text(path, value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--version', default='0.2.1')
+    parser.add_argument('--version', default='0.3.0')
     parser.add_argument('--output', type=Path, default=ROOT / 'dist' / '3DS-Korean-Patch-Manager-Windows-x64')
     args = parser.parse_args()
     out = args.output.resolve()
@@ -164,7 +164,8 @@ def main():
                '3DS 한글패치 매니저 · Windows 64비트\n\n'
                '1. ZIP을 폴더에 모두 압축 해제합니다.\n'
                '2. 「3DS 한글패치 매니저 실행.bat」을 두 번 누릅니다.\n'
-               '3. 간편 모드에서 목적을 고르고 필요한 파일만 선택합니다. 준비 방법 버튼으로 추출 안내를 볼 수 있습니다.\n\n'
+               '3. 받은 패치 ZIP을 창에 끌어다 놓고, 플레이할 곳(3DS 또는 PC)을 고른 뒤 시작을 누릅니다.\n'
+               '   패치를 직접 만들 때는 오른쪽 위 「제작자 도구」를 누릅니다.\n\n'
                'Python, .NET, xdelta는 이 폴더에 포함되어 있습니다. 게임·패치·키·certs.bin은 포함되지 않습니다.\n'
                'CIA 출력에는 필요한 키와 certs.bin이 필요합니다. 통합 CIA의 실제 기기 실행은 별도로 확인해야 합니다.\n'
                '실행되지 않으면 「실행 문제 확인.bat」을 실행하여 오류를 확인하세요.\n'

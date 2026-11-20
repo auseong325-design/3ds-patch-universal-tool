@@ -27,7 +27,9 @@ app = App()
 errors = []
 app.report_callback_exception = lambda *args: errors.append(args)
 app.withdraw(); app.update()
-assert app.mode.get() == '간편 모드'
+assert app.mode.get() == '초간단 모드'
+assert app.easy_panel.tools() == (bridge, xdelta)
+app.mode.set('간편 모드'); app.update()
 assert Path(app.vars['xdelta'].get()) == xdelta
 app.scenario.set('받은 통합 패키지 적용 · 배너 포함 가능'); app.update()
 assert 'RomForge' in app.checks_text.get('1.0', 'end')
