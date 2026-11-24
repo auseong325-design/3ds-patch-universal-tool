@@ -10,6 +10,10 @@ This tool helps creators and players prepare and apply 3DS translation patches. 
 
 The first screen is **Easy mode**: drop the patch ZIP you received onto the window, choose where you play (Nintendo 3DS or PC) and press start. The tool works out the patch type itself. A ready-to-install ZIP is copied to the SD card or the emulator folder; a patch that needs the game asks for your own game file. If another patch is already installed, the tool asks first and moves the existing folder to a backup folder. Authoring features remain under "제작자 도구" (Simple and Full modes) at the top right.
 
+0.4.0부터는 **레시피 패치**(내 게임 파일로 만드는 패치)도 받습니다. 게임 데이터가 없는 작은 ZIP과 본인의 게임 파일(본편·업데이트, 선택으로 DLC)을 함께 넣으면, 게임별 엔진이 이 PC에서 패치를 만들어 SD 카드·에뮬레이터에 설치하거나 본편+업데이트(+DLC)+패치를 합친 게임 파일(PC `.3ds`, 3DS `.cia`)을 만듭니다. 패치 코드가 Luma3DS의 LayeredFS 코드 자리와 겹치면 설치하지 않습니다. 첫 엔진은 대난투 스매시브라더스 for Nintendo 3DS 한국판입니다.
+
+Since 0.4.0 the tool also takes **recipe patches**: a small ZIP without game data plus your own game files (base, update, optionally DLC). A per-game engine builds the patch on your PC and either installs it to the SD card or emulator, or builds one all-in-one game file (PC `.3ds`, 3DS `.cia`). Code patches that would collide with Luma3DS's LayeredFS code are refused. The first engine is for the Korean Super Smash Bros. for Nintendo 3DS.
+
 ## 시작하기 / Getting started
 
 Windows 64비트 배포판은 [Releases](https://github.com/auseong325-design/3ds-patch-universal-tool/releases)에서 ZIP을 받아 압축을 푼 뒤 실행하세요. Python과 .NET은 배포판에 포함되어 있습니다.
@@ -32,6 +36,6 @@ This project builds on local forks of [Translation Toolkit](https://github.com/I
 
 ## 라이선스 / Licenses
 
-Translation Toolkit 및 JTools는 GPL-3.0, RomForge는 GPL-2.0-or-later입니다. 각 폴더의 라이선스와 제3자 구성요소 고지를 확인하세요. 배포용 런타임은 별도로 해당 라이선스를 동봉합니다.
+Translation Toolkit 및 JTools는 GPL-3.0, RomForge는 GPL-2.0-or-later입니다. 배포판에 들어 있는 [3dstool](https://github.com/dnasdw/3dstool) 1.2.6은 MIT입니다. 각 폴더의 라이선스와 제3자 구성요소 고지를 확인하세요. 배포용 런타임은 별도로 해당 라이선스를 동봉합니다.
 
-Translation Toolkit and JTools are GPL-3.0; RomForge is GPL-2.0-or-later. See the individual license files and third-party notices for the relevant components.
+Translation Toolkit and JTools are GPL-3.0; RomForge is GPL-2.0-or-later. The portable build includes [3dstool](https://github.com/dnasdw/3dstool) 1.2.6 (MIT). See the individual license files and third-party notices for the relevant components.

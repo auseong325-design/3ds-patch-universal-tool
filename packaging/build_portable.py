@@ -1,6 +1,7 @@
 """Build a Windows x64 portable folder with isolated Python and a self-contained bridge.
 
-Run from the source checkout with 64-bit Python 3.12, .NET 10 SDK, git and xdelta.
+Run from the source checkout with 64-bit Python 3.12, .NET 10 SDK, git, xdelta and 3dstool 1.2.6
+(TranslationToolkit/tools/3dstool-1.2.6: 3dstool.exe, ignore_3dstool.txt, LICENSE; used for recipe all-in-one game files).
 The destination must not already exist; game files and keys are never copied.
 """
 from __future__ import annotations
@@ -22,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / 'upstream' / 'TranslationToolkit' if (ROOT / 'upstream').is_dir() else ROOT / 'TranslationToolkit'
 ROMFORGE = ROOT / 'RomForge-reference' if (ROOT / 'RomForge-reference').is_dir() else ROOT / 'RomForge'
 XDELTA_SHA256 = '732980d52f9220dc81817ccdd0c295eadce8a0048a24c2a771a73f791ac824e9'
+THREEDSTOOL_SHA256 = '967fd5ec6476df1fa6a01da0df5a1fea339aa488c10be218d38e07f4b8143b7e'   # 3dstool 1.2.6 win (MIT)
+THREEDSTOOL_IGNORE_SHA256 = '6123f0d8a410d64a51f74e01eaa1e9f2ad96effd63c1996580985b83f38c875c'
 BINJ_SHA256 = '8158174216fe90d5c3135894734e97d4a031e2e4'
 BINJ_FILE_SHA256 = '8af74104ea9a6444fe8c394c4e8873fa069aa582d070ddbae4741d9006e6756e'
 LICENSE_URLS = {
@@ -73,7 +76,7 @@ def write_text(path, value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--version', default='0.3.2')
+    parser.add_argument('--version', default='0.4.0')
     parser.add_argument('--output', type=Path, default=ROOT / 'dist' / '3DS-Korean-Patch-Manager-Windows-x64')
     args = parser.parse_args()
     out = args.output.resolve()
@@ -90,6 +93,10 @@ def main():
         xdelta = ROOT.parent / 'app/tools/xdelta-3.2.2/xdelta3.exe'
     if not xdelta.is_file() or digest(xdelta) != XDELTA_SHA256:
         raise SystemExit('검증된 xdelta3.exe가 필요합니다. 툴의 xdelta 설치 기능으로 준비하세요.')
+    threedstool = APP / 'tools' / '3dstool-1.2.6'
+    if (not (threedstool / '3dstool.exe').is_file() or digest(threedstool / '3dstool.exe') != THREEDSTOOL_SHA256
+            or digest(threedstool / 'ignore_3dstool.txt') != THREEDSTOOL_IGNORE_SHA256 or not (threedstool / 'LICENSE').is_file()):
+        raise SystemExit('검증된 3dstool 1.2.6(3dstool.exe, ignore_3dstool.txt, LICENSE)이 tools/3dstool-1.2.6에 필요합니다.')
     if not (APP / 'BinJEditor/JTools.py').is_file() or not (APP / 'BinJEditor/LICENSE').is_file():
         raise SystemExit('BinJEditor/JTools.py와 LICENSE가 필요합니다.')
     if digest(APP / 'BinJEditor/JTools.py') != BINJ_FILE_SHA256:
@@ -104,6 +111,9 @@ def main():
         shutil.copytree(APP / name, app / name, ignore=ignored)
     (app / 'tools/xdelta-3.2.2').mkdir(parents=True)
     shutil.copy2(xdelta, app / 'tools/xdelta-3.2.2/xdelta3.exe')
+    (app / 'tools/3dstool-1.2.6').mkdir(parents=True)
+    for name in ('3dstool.exe', 'ignore_3dstool.txt'):
+        shutil.copy2(threedstool / name, app / 'tools/3dstool-1.2.6' / name)
     shutil.copy2(APP / 'README_KO.md', app / 'README_KO.md')
 
     rt = out / 'runtime'
@@ -125,6 +135,7 @@ def main():
     for src, name in ((APP / 'LICENSE', 'TranslationToolkit-GPL-3.0.txt'),
                       (APP / 'BinJEditor/LICENSE', 'BinJEditor-GPL-3.0.txt'),
                       (ROMFORGE / 'LICENSE', 'RomForge-GPL-2.0.txt'),
+                      (threedstool / 'LICENSE', '3dstool-MIT.txt'),
                       (python / 'LICENSE.txt', 'Python-LICENSE.txt'),
                       (Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'dotnet/LICENSE.txt', 'dotnet-LICENSE.txt'),
                       (Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'dotnet/ThirdPartyNotices.txt', 'dotnet-ThirdPartyNotices.txt')):
@@ -142,6 +153,7 @@ def main():
                'Translation Toolkit 및 BinJEditor: GPL-3.0; RomForge: GPL-2.0-or-later.\n'
                f'BinJEditor JTools.py: https://github.com/Ich73/BinJEditor/tree/{BINJ_SHA256}\n'
                'xdelta 3.2.2: Apache-2.0; ZstdSharp.Port 0.8.8: MIT; SevenZipSharp.Lite 1.6.2.24: LGPL-3.0-only.\n'
+               '3dstool 1.2.6 (dnasdw/3dstool): MIT. 레시피 패치로 합본 게임 파일을 만들 때만 씁니다.\n'
                '7-Zip, Python, Tcl/Tk 및 .NET의 고지는 이 폴더의 각 파일을 참조하세요.\n'
                '수정된 프로그램 소스와 RomForge 브리지 빌드 소스는 source 폴더에 있습니다.\n')
     git_copy(APP, out / 'source/TranslationToolkit')
@@ -154,7 +166,7 @@ def main():
         shutil.copy2(verification, out / 'source/packaging/verify_portable.py')
 
     write_text(out / 'portable.manifest.json', json.dumps({'format': 1, 'version': args.version, 'platform': 'win-x64',
-               'python': sys.version.split()[0], 'xdelta_sha256': XDELTA_SHA256,
+               'python': sys.version.split()[0], 'xdelta_sha256': XDELTA_SHA256, 'threedstool_sha256': THREEDSTOOL_SHA256,
                'binjeditor_commit': BINJ_SHA256}, indent=2))
     launcher = '@echo off\r\nset "PYTHONHOME=%~dp0runtime"\r\nset "PYTHONPATH="\r\nset "PYTHONNOUSERSITE=1"\r\nset "PYTHONDONTWRITEBYTECODE=1"\r\nstart "" "%~dp0runtime\\pythonw.exe" "%~dp0app\\KoreanPatchManager.py"\r\n'
     (out / '3DS 한글패치 매니저 실행.bat').write_bytes(launcher.encode('ascii'))
@@ -165,8 +177,10 @@ def main():
                '1. ZIP을 폴더에 모두 압축 해제합니다.\n'
                '2. 「3DS 한글패치 매니저 실행.bat」을 두 번 누릅니다.\n'
                '3. 받은 패치 ZIP을 창에 끌어다 놓고, 플레이할 곳(3DS 또는 PC)을 고른 뒤 시작을 누릅니다.\n'
-               '   패치를 직접 만들 때는 오른쪽 위 「제작자 도구」를 누릅니다.\n\n'
-               'Python, .NET, xdelta는 이 폴더에 포함되어 있습니다. 게임·패치·키·certs.bin은 포함되지 않습니다.\n'
+               '   패치를 직접 만들 때는 오른쪽 위 「제작자 도구」를 누릅니다.\n'
+               '4. 「내 게임 파일로 만드는 패치」(레시피)는 본편·업데이트 같은 본인 게임 파일도 함께 끌어다 놓습니다.\n'
+               '   패치 설치(SD 카드·에뮬레이터)나 합본 게임 파일(.3ds·.cia) 중 하나를 고릅니다.\n\n'
+               'Python, .NET, xdelta, 3dstool은 이 폴더에 포함되어 있습니다. 게임·패치·키·certs.bin은 포함되지 않습니다.\n'
                'CIA 출력에는 필요한 키와 certs.bin이 필요합니다. 통합 CIA의 실제 기기 실행은 별도로 확인해야 합니다.\n'
                '실행되지 않으면 「실행 문제 확인.bat」을 실행하여 오류를 확인하세요.\n'
                '폴더 전체를 함께 이동하세요. 상세 설명은 app/README_KO.md를 참조하세요.\n')

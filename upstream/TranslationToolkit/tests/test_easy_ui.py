@@ -123,6 +123,55 @@ class EasyUITests(unittest.TestCase):
         self.assertEqual((target / 'romfs' / 'Msg' / 'a.dat').read_bytes(), b'hangul 2')
         self.assertEqual(len(list((sd / 'luma' / 'titles_backup').iterdir())), 1)
 
+    def test_recipe_patch_sorts_files_and_switches_modes(self):
+        from korean_patch_manager import easy
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('kpm_test_recipe', Path(__file__).with_name('test_recipe.py'))
+        helpers = importlib.util.module_from_spec(spec); spec.loader.exec_module(helpers)
+        recipe_zip, ncch_file, BASE, UPDATE, DLC = helpers.recipe_zip, helpers.ncch_file, helpers.BASE, helpers.UPDATE, helpers.DLC
+        panel = self.panel
+        recipe_zip(self.root / 'recipe.zip')
+        for name, title in (('update.cia', UPDATE), ('dlc.cia', DLC)):
+            ncch_file(self.root / name, title)
+        helpers.ncsd_file(self.root / 'game.3ds', BASE)
+        panel.add_paths([self.root / 'recipe.zip', self.root / 'update.cia', self.root / 'game.3ds'])
+        self.pump()
+        self.assertEqual(panel.package.kind, easy.RECIPE)
+        self.assertEqual(sorted(panel.inputs), ['base', 'update'])
+        self.assertIn('무엇을 만들까요?', self.texts())
+        self.assertNotIn('DLC 파일 (선택)', self.texts())             # DLC only goes into the all-in-one
+        self.click('합본 게임 파일')
+        self.assertEqual(panel.recipe_mode, 'rom')
+        self.assertIn('DLC 파일 (선택)', self.texts())
+        panel.add_paths([self.root / 'dlc.cia']); self.pump()
+        self.assertEqual(sorted(panel.inputs), ['base', 'dlc', 'update'])
+        self.click('PC')
+        self.assertIn('합본 게임 파일(.3ds)', self.texts())
+        self.assertIn('만들기 시작', self.texts())
+        calls = []
+        original = easy.run_recipe
+
+        def fake(package, inputs, mode, *args, **kwargs):
+            calls.append((mode, sorted(inputs), kwargs.get('fmt'), Path(kwargs['output']).name))
+            Path(kwargs['output']).write_bytes(b'rom')
+            return {'output': str(kwargs['output']), 'sha256': '0' * 64, 'record': {}}
+        easy.run_recipe = fake
+        self.addCleanup(setattr, easy, 'run_recipe', original)
+        from korean_patch_manager import recipe
+        tool = recipe.tool_path(panel.app_dir)
+        if tool.is_file():                         # 3dstool is bundled in app/tools; without it the button stays blocked
+            self.assertIsNone(panel.blocker())
+            self.click('만들기 시작')
+            self.pump(10, lambda: panel.view == 'done')
+            self.assertEqual(calls, [('rom', ['base', 'dlc', 'update'], 'CCI', 'TEST_GAME_DLC.3ds')])
+            self.assertIn('합본 게임 파일을 만들었어요', self.texts())
+            self.assertIn('업데이트·DLC·모드가 따로 설치돼 있으면', self.texts())
+            self.click('처음으로')
+        panel.add_paths([self.root / 'recipe.zip', self.root / 'game.3ds']); self.pump()
+        self.click('패치 설치')
+        self.assertEqual(panel.blocker(), '업데이트 파일을(를) 넣어 주세요.')
+        self.assertEqual(json.loads((self.root / 'settings.json').read_text(encoding='utf-8'))['recipe_mode'], 'install')
+
     def test_wrong_files_help_modes_and_themes(self):
         import KoreanPatchManager as kpm
         from korean_patch_manager import easy_ui

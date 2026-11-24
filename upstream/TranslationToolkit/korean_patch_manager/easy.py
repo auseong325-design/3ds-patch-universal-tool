@@ -20,10 +20,11 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import core, metadata, romforge, simple
+from . import core, metadata, recipe, romforge, simple
 
 GAME_SUFFIXES = ('.cia', '.cci', '.3ds', '.zcci')
-INSTALL, MERGE, DELTA = 'install', 'merge', 'delta'
+INSTALL, MERGE, DELTA, RECIPE = 'install', 'merge', 'delta', 'recipe'
+ROLES = ('base', 'update', 'dlc')     # the user's own files a recipe patch is built from
 SD, EMULATOR = 'sd', 'emulator'
 MAX_ENTRIES = 100_000
 
@@ -121,7 +122,10 @@ class Package:
 
     @property
     def needs_game(self):
-        return self.kind in (MERGE, DELTA)
+        return self.kind in (MERGE, DELTA, RECIPE)
+
+    def requires(self, role):
+        return (self.manifest or {}).get('requires', {}).get(role) if self.kind == RECIPE else None
 
     @property
     def summary(self):
@@ -129,6 +133,10 @@ class Package:
             parts = ['바로 설치하는 패치', f'파일 {self.file_count}개']
         elif self.kind == MERGE:
             parts = ['게임 파일에 합치는 패치', f'파일 {self.file_count}개']
+        elif self.kind == RECIPE:
+            parts = ['내 게임 파일로 만드는 패치', str(self.manifest.get('name') or self.title_id)]
+            if self.manifest.get('version'): parts.append(str(self.manifest['version']))
+            return '  ·  '.join(parts)
         else:
             parts = ['게임 파일이 필요한 패치', f'파일 {self.file_count}개']
         if self.code_patch: parts.append('코드 패치 포함')
@@ -198,6 +206,17 @@ def _classify(path, source):
                 manifest = json.loads(stream.read())
         except (ValueError, UnicodeDecodeError):
             manifest = None
+    if isinstance(manifest, dict) and manifest.get('format') == recipe.FORMAT:
+        try:
+            title = core.title_id(str(manifest.get('title_id', '')))
+            recipe.engine(manifest.get('engine'))
+        except recipe.RecipeError as error:
+            raise EasyError(error.title, error.body, 'package') from None
+        except ValueError:
+            raise EasyError('패치 정보가 올바르지 않습니다', '패치를 다시 받아 주세요.', 'package') from None
+        if not isinstance(manifest.get('requires'), dict) or not {'base', 'update'} <= set(manifest['requires']):
+            raise EasyError('패치 정보가 올바르지 않습니다', '패치를 다시 받아 주세요.', 'package')
+        return Package(path, RECIPE, title, len(manifest.get('files') or {}), True, manifest=manifest, source=source)
     if isinstance(manifest, dict) and isinstance(manifest.get('changes'), list):
         try:
             title = core.title_id(str(manifest.get('title_id', '')))
@@ -227,6 +246,7 @@ class Game:
     title_id: str | None
     size: int
     encrypted: bool | None = None
+    role: str = ''
 
 
 def _encrypted(path):
@@ -283,6 +303,101 @@ def check_game(path, package):
                         '지역(일본판·북미판 등)이 다른 게임일 수 있습니다. 패치 안내서에 적힌 게임을 확인해 주세요.',
                         'game', f'패치 {package.title_id} / 게임 {title}')
     return Game(path, info['format'], title, size, _encrypted(path))
+
+
+ROLE_WORDS = {'base': '본편 게임 파일', 'update': '업데이트 파일', 'dlc': 'DLC(추가 콘텐츠) 파일'}
+
+
+def check_recipe_input(path, package):
+    """One of the user's files for a recipe patch, sorted by its Title ID (header check only)."""
+    game = check_game(path, None)
+    if game.title_id is None:
+        raise EasyError('이 형식은 쓸 수 없습니다', '복호화한 .3ds · .cci · .cia 파일을 넣어 주세요.', 'game')
+    requires = package.manifest.get('requires') or {}
+    role = next((r for r in ROLES if r in requires and str(requires[r].get('title_id', '')).upper() == game.title_id), None)
+    if role is None:
+        raise EasyError('이 패치와 다른 게임입니다',
+                        '지역(일본판·북미판 등)이 다른 게임일 수 있습니다. 패치 안내서에 적힌 파일을 확인해 주세요.',
+                        'game', f'파일 {game.title_id}')
+    if game.encrypted:
+        raise EasyError('암호화된 파일입니다', 'GodMode9에서 이 파일을 고른 뒤 「Decrypt」(복호화)로 만든 파일을 넣어 주세요.', 'game')
+    game.role = role
+    return game
+
+
+def recipe_output(package, inputs, fmt, folder=None):
+    """A fresh file name for the all-in-one game file, next to the user's base game unless a folder is chosen."""
+    stem = str(package.manifest.get('rom_name') or package.title_id) + ('_DLC' if inputs.get('dlc') else '')
+    folder = Path(folder) if folder else Path(inputs['base'].path).parent
+    suffix = '.cia' if fmt == 'CIA' else '.3ds'
+    candidate, index = folder / (stem + suffix), 2
+    while candidate.exists() or (folder / (candidate.name + '.검증.json')).exists():
+        candidate = folder / f'{stem} ({index}){suffix}'
+        index += 1
+    return candidate
+
+
+RECIPE_PHASES = {'install': ('게임 파일 확인', '내 게임 파일로 패치 만들기', '패치 설치'),
+                 'rom': ('게임 파일 확인·분해', '번역·글꼴 적용', '합본 게임 파일 만들기·검사', '3DS용 CIA로 바꾸기')}
+# engine progress labels -> phase; checked in this order, the phase never goes back
+_PHASE_WORDS = {'install': ((1, ('글꼴', '문장', 'SD용', '결과 확인')), (0, ('확인', '꺼내기'))),
+                'rom': ((3, ('CIA',)), (2, ('조립', '합본', '결과 해시')), (1, ('번역', '글꼴', '문장', 'SD용', '결과 확인', '원본 확인')),
+                        (0, ('확인', '분해', 'DLC')))}
+
+
+def _phase_reporter(progress, mode):
+    state = {'phase': 0}
+
+    def report(label, fraction=None):
+        for phase, words in _PHASE_WORDS[mode]:
+            if any(w in str(label) for w in words):
+                state['phase'] = max(state['phase'], phase)
+                break
+        if progress: progress(state['phase'], fraction)
+    return report
+
+
+def _work_folder(need, *candidates):
+    for folder in candidates:
+        try:
+            if folder and Path(folder).is_dir() and shutil.disk_usage(folder).free >= need:
+                return Path(folder)
+        except OSError:
+            continue
+    raise EasyError('저장 공간이 부족합니다', f'작업하는 동안 약 {size_text(need)}의 빈 공간이 필요합니다.\n'
+                    '끝나면 결과만 남고 작업 파일은 지워집니다.')
+
+
+def run_recipe(package, inputs, mode, kind=None, root=None, output=None, fmt='CCI', app_dir=None, keys=None, bridge=None,
+               allow_replace=False, progress=None, log=None):
+    """Build a recipe patch from the user's files.
+
+    mode 'install': build the title folder in a temporary place, then install it like a ready-made patch.
+    mode 'rom': build one all-in-one game file at output (.3ds, or .cia through the RomForge bridge)."""
+    paths = {role: Path(game.path) for role, game in inputs.items() if game}
+    if not {'base', 'update'} <= set(paths):
+        raise EasyError('게임 파일이 모자랍니다', '본편 게임 파일과 업데이트 파일을 모두 넣어 주세요.', 'game')
+    report = _phase_reporter(progress, mode)
+    try:
+        if mode == 'install':
+            paths.pop('dlc', None)
+            work = _work_folder(recipe.required_space('install'), tempfile.gettempdir(), paths['base'].parent)
+            with tempfile.TemporaryDirectory(prefix='kpm-recipe-', dir=work) as td:
+                title_dir, _ = recipe.build_install(package.path, package.manifest, paths, td, report, log)
+                built = detect_package(title_dir)
+                try:
+                    if progress: progress(2, 0.0)
+                    return run_install(built, kind, root, allow_replace,
+                                       (lambda done, total: progress(2, done / max(1, total))) if progress else None)
+                finally:
+                    built.close()
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        _work_folder(recipe.required_space('rom'), output.parent)
+        record = recipe.build_rom(package.path, package.manifest, paths, output, fmt, app_dir, keys, bridge, report, log)
+        return {'output': str(output), 'sha256': (record.get('cia') or {}).get('sha256') or record['output_sha256'], 'record': record}
+    except recipe.RecipeError as error:
+        raise EasyError(error.title, error.body, None, error.code) from None
 
 
 # ---------------------------------------------------------------- where it goes
@@ -557,7 +672,7 @@ def explain(error):
     return '작업을 끝내지 못했습니다', '넣은 파일이 맞는지 확인하고 다시 시도해 주세요.\n계속 실패하면 아래 내용을 패치 제작자에게 알려 주세요.', None, detail
 
 
-def next_steps(kind, fmt=None):
+def next_steps(kind, fmt=None, allinone=False):
     if kind == SD:
         return ['SD 카드를 「안전하게 제거」한 뒤 3DS에 꽂습니다.',
                 'SELECT 버튼을 누른 채 3DS 전원을 켭니다.',
@@ -566,6 +681,13 @@ def next_steps(kind, fmt=None):
     if kind == EMULATOR:
         return ['에뮬레이터를 켜고 게임을 실행합니다. 실행 중이었다면 게임을 껐다 켭니다.',
                 '패치 안내서에 「업데이트 설치」 조건이 있다면 먼저 설치해 주세요.']
+    if allinone and fmt == 'CIA':
+        return ['만들어진 .cia 파일을 SD 카드에 복사합니다.',
+                '3DS에서 FBI를 열어 그 파일을 설치합니다.',
+                '이 게임의 공식 업데이트가 설치돼 있으면 FBI에서 지워 주세요. 합본 안에 업데이트가 들어 있습니다.']
+    if allinone:
+        return ['Azahar에서 「파일 → 파일 불러오기」로 만들어진 .3ds 파일을 엽니다.',
+                'Azahar에 이 게임의 업데이트·DLC·모드가 따로 설치돼 있으면 그쪽이 쓰일 수 있습니다. 지우거나 끈 뒤 실행하세요.']
     if fmt == 'CIA':
         return ['만들어진 .cia 파일을 SD 카드에 복사합니다.',
                 '3DS에서 FBI를 열어 그 파일을 설치합니다.',

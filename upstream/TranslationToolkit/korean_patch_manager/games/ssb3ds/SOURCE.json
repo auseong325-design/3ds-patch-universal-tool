@@ -1,0 +1,18 @@
+{
+ "project": "ssb-for-3ds-korean-patch-project",
+ "files": {
+  "archive.py": "bcb35d87f757d559c33608b6e190e7b1145abc3c58200bce5897ea55ebbd9f4f",
+  "rfpack.py": "34219bc4cb530117457b9b54c6fe685f4e5721bbc440521c9e21f9bc1652270f",
+  "pack3ds.py": "541440ea98c1a8100b17b859b423ad474cd7652374ebd44b8566386cd7ccfb99",
+  "msbt.py": "d6e8f1ff829e037f9692cfc8cffe6a443234d574c00c21eb635c2487a182811b",
+  "grayimg.py": "5befd664ee6d9e200aa08e064baacd62b4110e2616ee79e19ba0db32c5fd5b1c",
+  "ctr_font.py": "ee78b0242c67ac53efcd4cbe4e76406f087f05ea108c43a16dcc08ff3e416a33",
+  "patchcore.py": "40eecf8c24e654a8629d9e7c91d26038e50e6ac97942ca74403e0b9bdcd94e67",
+  "ctr_dump.py": "a4eba6bd76030da5d3c7c0ad2ea56080e6a3caee582d1f252feba3ad3414ebd3",
+  "rom_container.py": "f0ac664acbc9099f86951679116db8f412fe27557e1c891463a16304fced319c",
+  "dlc_dump.py": "69044cd6737e524978935f8de10380889bd182eb9ce5787b5c47397bf0310966",
+  "dlc_runtime.py": "c5dc6e989a8fe0ae80c0dea984d9f84ae3176547f24818637f41584049e6527b",
+  "standalone_core.py": "44965ec9f054742395224a3a6b520eb1269dd36074fbe10c82c989168fe7a3b1",
+  "engine.py": "49a7a039ceb65369630f272f5ac5fc96c3de59816e1f952413de2a6332ab934b"
+ }
+}

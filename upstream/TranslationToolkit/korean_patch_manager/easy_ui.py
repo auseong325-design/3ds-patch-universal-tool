@@ -20,7 +20,7 @@ import tkinter.font as tkfont
 from pathlib import Path
 from tkinter import filedialog
 
-from . import dnd, easy, paint, runtime, simple, simple_ui
+from . import dnd, easy, paint, recipe, runtime, simple, simple_ui
 
 LIGHT = dict(
     bg='#F3F4F7', card='#FFFFFF', line='#E3E6EC', text='#1A1D23', text2='#5B6472', text3='#8A92A0',
@@ -46,9 +46,21 @@ PHASES = {
     easy.INSTALL: ('설치할 위치 확인', '패치 파일 복사'),
     easy.MERGE: ('게임 파일 풀기', '패치 합치기', '새 게임 파일 만들기', '결과 검사'),
     easy.DELTA: ('게임 파일 풀기', '패치 파일 되살리기', '패치 설치'),
+    (easy.RECIPE, 'install'): easy.RECIPE_PHASES['install'],
+    (easy.RECIPE, 'rom-cci'): easy.RECIPE_PHASES['rom'][:3],
+    (easy.RECIPE, 'rom-cia'): easy.RECIPE_PHASES['rom'],
 }
+RECIPE_MODES = (('install', '패치 설치', 'SD 카드·에뮬레이터에 (추천)', 'sd'),
+                ('rom', '합본 게임 파일', '본편+업데이트(+DLC)를 한 파일로', 'game'))
 
 HELP = {
+    'recipe': ('내 게임 파일로 만드는 패치란?',
+               '이 패치 ZIP에는 게임 데이터가 들어 있지 않습니다. 번역문·글꼴·바꿀 부분만 들어 있고, '
+               '프로그램이 본인의 게임 파일로 이 PC에서 패치를 만듭니다.\n\n'
+               '· 패치 설치(추천): 만든 패치를 SD 카드나 Azahar에 넣습니다. 3DS에서는 공식 업데이트를 설치해 둔 채로 실행합니다.\n'
+               '· 합본 게임 파일: 본편·업데이트·패치(넣었다면 DLC까지)를 한 파일로 만듭니다. PC는 .3ds, 3DS는 .cia를 만듭니다.\n\n'
+               '필요한 파일은 패치 안내서에 적혀 있습니다. 파일을 한꺼번에 끌어다 놓으면 프로그램이 알아서 나눠 넣습니다. '
+               '파일은 GodMode9에서 복호화(Decrypt)한 것이어야 합니다.', None, None),
     'package': ('어떤 파일을 넣나요?',
                 '패치를 받은 곳에서 내려받은 ZIP 파일을 그대로 넣으면 됩니다. 압축을 풀 필요가 없습니다.\n\n'
                 '프로그램이 ZIP 안을 보고 종류를 알아냅니다.\n'
@@ -110,8 +122,10 @@ class EasyPanel(tk.Frame):
         self.messages, self.drops = queue.Queue(), None
         self.view, self.busy = 'home', False
         self.package = self.package_error = self.game = self.game_error = self.game_path = None
+        self.inputs, self.input_errors, self.loose = {}, {}, []
         self.note = ''
         settings = easy.load_settings()
+        self.recipe_mode = settings.get('recipe_mode') if settings.get('recipe_mode') in ('install', 'rom') else 'install'
         self.where = settings.get('place') if settings.get('place') in ('3ds', 'pc') else None
         self.cards, self.sd_root = easy.find_sd_cards(), None
         self.emulators = easy.find_emulators()
@@ -338,7 +352,11 @@ class EasyPanel(tk.Frame):
             return self.hero(x, y, cw, height)
         gap = self.p(12)
         y = self.file_card(x, y, cw, 'package') + gap
-        if self.game_path or (self.package and self.package.needs_game):
+        if self.recipe():
+            y = self.mode_card(x, y, cw) + gap
+            for role in self.recipe_roles():
+                y = self.file_card(x, y, cw, role) + gap
+        elif self.game_path or (self.package and self.package.needs_game):
             y = self.file_card(x, y, cw, 'game') + gap
         if self.package:
             y = self.place_card(x, y, cw) + gap
@@ -388,9 +406,12 @@ class EasyPanel(tk.Frame):
 
     def file_card(self, x, y, cw, role):
         t, pad = self.t, self.p(18)
-        value = self.package if role == 'package' else self.game
-        error = self.package_error if role == 'package' else self.game_error
-        pick = self.pick_package if role == 'package' else self.pick_game
+        if role in easy.ROLES:
+            value, error, pick = self.inputs.get(role), self.input_errors.get(role), (lambda r=role: self.pick_input(r))
+        else:
+            value = self.package if role == 'package' else self.game
+            error = self.package_error if role == 'package' else self.game_error
+            pick = self.pick_package if role == 'package' else self.pick_game
         badge, bx = self.p(40), x + pad
         tx = bx + badge + self.p(14)
         if error:
@@ -412,17 +433,22 @@ class EasyPanel(tk.Frame):
             return y + h
         if value is None:
             wording = {'package': ('패치 파일을 넣어 주세요', '받은 ZIP 파일을 끌어다 놓거나 골라 주세요', 'zip_'),
-                       'game': ('게임 파일이 필요해요', '본인이 가진 게임 파일(.cia · .3ds · .cci)을 끌어다 놓거나 골라 주세요', 'game')}[role]
+                       'game': ('게임 파일이 필요해요', '본인이 가진 게임 파일(.cia · .3ds · .cci)을 끌어다 놓거나 골라 주세요', 'game'),
+                       'base': ('본편 게임 파일이 필요해요', self.requirement('base', '복호화한 카트리지 덤프(.3ds · .cci)'), 'game'),
+                       'update': ('업데이트 파일이 필요해요', self.requirement('update', '복호화한 업데이트 CIA'), 'game'),
+                       'dlc': ('DLC 파일 (선택)', '넣으면 합본에 DLC도 들어가요. 없으면 비워 두세요', 'game')}[role]
             bw = self.button_width('파일 고르기', bold=True)
-            h = self.p(104 if role == 'game' else 80)
+            h = self.p(104 if role != 'package' else 80)
             self.shape(x, y, cw, h, self.p(16), t['accent_soft'], t['accent_line'], self.p(1.5))
             d = badge
             self.shape(bx, y + self.p(20), d, d, d / 2.0, t['card'])
             self.icon(bx + d / 2.0, y + self.p(20) + d / 2.0, wording[2], 19, t['accent'])
             self.label(tx, y + self.p(18), wording[0], 15, bold=True)
             self.label(tx, y + self.p(42), self.fit(wording[1], 13, cw - (tx - x) - bw - 2 * pad), 13, t['text2'])
-            if role == 'game':
+            if role in ('game', 'base'):
                 self.link(tx, y + self.p(68), '게임 파일은 어떻게 준비하나요?', lambda: self.open_help('game'))
+            elif role in easy.ROLES:
+                self.link(tx, y + self.p(68), '어떤 파일을 넣나요?', lambda: self.open_help('recipe'))
             self.button(x + cw - pad - bw, y + self.p(22), bw, self.p(38), '파일 고르기', pick, 'primary')
             return y + h
         h = self.p(76)
@@ -432,12 +458,18 @@ class EasyPanel(tk.Frame):
         limit = cw - (tx - x) - bw - 2 * pad
         if role == 'package':
             name, detail = value.path.name, value.summary
+        elif role in easy.ROLES:
+            name = value.path.name
+            detail = f'{easy.ROLE_WORDS[role]} 확인됨  ·  ' + easy.size_text(value.size)
         else:
             name = value.path.name
             detail = ('게임 파일이에요' if not self.package else '패치와 맞는 게임이에요' if value.title_id
                       else '시작하면 패치와 맞는지 확인해요') + '  ·  ' + easy.size_text(value.size)
         self.label(tx, y + self.p(16), self.fit(name, 15, limit, True), 15, bold=True)
         self.label(tx, y + self.p(41), self.fit(detail, 13, limit), 13, t['text2'])
+        if role == 'dlc':
+            bw2 = self.button_width('빼기', 13)
+            self.button(x + cw - pad - bw - bw2 - self.p(8), y + self.p(21), bw2, self.p(34), '빼기', self.remove_dlc, size=13)
         self.button(x + cw - pad - bw, y + self.p(21), bw, self.p(34), '바꾸기', pick, size=13)
         return y + h
 
@@ -463,8 +495,22 @@ class EasyPanel(tk.Frame):
         self._lower(self.shape(x, y, cw, h, self.p(16), t['card'], t['line'], shadow=t['shadow']), first)
         return y + h
 
-    def tile(self, x, y, w, h, key, title, sub, glyph):
-        t, chosen = self.t, self.where == key
+    def mode_card(self, x, y, cw):
+        t, pad = self.t, self.p(18)
+        first = len(self.c.find_all())
+        self.label(x + pad, y + pad - self.p(2), '무엇을 만들까요?', 15, bold=True)
+        ty, gap = y + pad + self.p(30), self.p(12)
+        tw, th = (cw - 2 * pad - gap) // 2, self.p(72)
+        for index, (key, title, sub, glyph) in enumerate(RECIPE_MODES):
+            self.tile(x + pad + index * (tw + gap), ty, tw, th, key, title, sub, glyph,
+                      chosen=self.recipe_mode == key, command=lambda k=key: self.choose_mode(k))
+        h = ty + th - y + pad
+        self._lower(self.shape(x, y, cw, h, self.p(16), t['card'], t['line'], shadow=t['shadow']), first)
+        return y + h
+
+    def tile(self, x, y, w, h, key, title, sub, glyph, chosen=None, command=None):
+        t = self.t
+        chosen = self.where == key if chosen is None else chosen
         self._n += 1
         tag = f'b{self._n}'
         looks = {'normal': (t['accent_soft'], t['accent'], 2.0) if chosen else (t['card'], t['button_line'], 1.0),
@@ -488,7 +534,7 @@ class EasyPanel(tk.Frame):
             self.c.addtag_withtag(tag, self.shape(x + w - d - self.p(14), y + (h - d) / 2.0, d, d, d / 2.0, PRIMARY_FILL[mode][0]))
             if self.icon(x + w - d / 2.0 - self.p(14), y + h / 2.0, 'check', 11, '#FFFFFF', tags=(tag,)) is None:
                 self.label(x + w - d / 2.0 - self.p(14), y + h / 2.0, '✓', 12, '#FFFFFF', True, 'center', tags=(tag,))
-        self.clickable(tag, lambda: self.choose_place(key), states)
+        self.clickable(tag, command or (lambda: self.choose_place(key)), states)
 
     def place_detail(self, x, y, w):
         """One box saying what will happen at the chosen place, with the single control it may need.
@@ -497,12 +543,18 @@ class EasyPanel(tk.Frame):
         """
         t = self.t
         kind = self.package.kind
+        allinone = self.recipe() and self.recipe_mode == 'rom'
         buttons, tone, glyph = [], 'text2', 'info'
-        if kind == easy.MERGE and self.where == 'pc':
+        if allinone and self.where == 'pc':
+            base = self.inputs.get('base')
+            folder = self.out_dir or (base.path.parent if base else None)
+            lines = ['Azahar에서 바로 여는 합본 게임 파일(.3ds)을 새로 만들어요. 작업 중 약 13GB가 필요해요.'] + ([('저장 위치: ', folder)] if folder else [])
+            buttons = [('저장 위치 바꾸기', self.pick_output)]
+        elif kind == easy.MERGE and self.where == 'pc':
             folder = self.out_dir or (self.game.path.parent if self.game else None)
             lines = ['Azahar에서 바로 열 수 있는 게임 파일(.cci)을 새로 만들어요.'] + ([('저장 위치: ', folder)] if folder else [])
             buttons = [('저장 위치 바꾸기', self.pick_output)]
-        elif kind == easy.MERGE:
+        elif kind == easy.MERGE or allinone:
             problem = self.keys_problem()
             if problem:
                 lines, tone, glyph = ['3DS에 설치하는 파일(.cia)을 만들려면 키 폴더가 필요해요.', problem], 'warn', 'key'
@@ -510,6 +562,10 @@ class EasyPanel(tk.Frame):
             else:
                 lines, tone, glyph = ['3DS에 설치하는 파일(.cia)을 새로 만들어요.', ('키 폴더: ', self.key_dir)], 'success', 'check'
                 buttons = [('바꾸기', self.pick_keys)]
+                if allinone:
+                    folder = self.out_dir or (self.inputs['base'].path.parent if self.inputs.get('base') else None)
+                    if folder: lines.append(('저장 위치: ', folder))
+                    buttons.append(('저장 위치', self.pick_output))
         elif self.where == '3ds':
             root = self.current_sd()
             card = next((c for c in self.cards if c.root == root), None)
@@ -552,7 +608,8 @@ class EasyPanel(tk.Frame):
     def action_bar(self, x, y, cw):
         t = self.t
         blocker = self.blocker()
-        label = '설치 시작' if self.package and self.package.kind != easy.MERGE else '패치 시작'
+        label = ('만들기 시작' if self.recipe() and self.recipe_mode == 'rom'
+                 else '설치 시작' if self.package and self.package.kind != easy.MERGE else '패치 시작')
         bw, bh = self.p(176), self.p(50)
         self.button(x + cw - bw, y, bw, bh, label, self.start, 'primary', enabled=not blocker, size=16)
         self.primary = None if blocker else self.start
@@ -571,8 +628,9 @@ class EasyPanel(tk.Frame):
     def keys_problem(self):
         if not self.key_dir:
             return '키 파일(aes_keys.txt)이 든 폴더를 골라 주세요.'
+        source = self.inputs.get('update') if self.recipe() else self.game     # a CIA that carries certificates
         try:
-            simple.validate_cia_keys(self.key_dir, self.game.path if self.game else None)
+            simple.validate_cia_keys(self.key_dir, source.path if source else None)
         except ValueError as error:
             return str(error)
         return None
@@ -583,6 +641,8 @@ class EasyPanel(tk.Frame):
     def blocker(self):
         """The one thing the user should do next, or None when everything is ready."""
         if self.package_error or not self.package: return '패치 파일을 넣어 주세요.'
+        if self.recipe():
+            return self.recipe_blocker()
         if self.package.needs_game:
             if self.game_error or not self.game: return '게임 파일을 넣어 주세요.'
             bridge, xdelta = self.tools()
@@ -593,6 +653,67 @@ class EasyPanel(tk.Frame):
             return '키 폴더를 골라 주세요.' if self.where == '3ds' and self.keys_problem() else None
         if self.where == '3ds': return None if self.current_sd() else 'SD 카드를 꽂거나 폴더를 골라 주세요.'
         return None if self.emu_root else '에뮬레이터 폴더를 골라 주세요.'
+
+    def recipe_blocker(self):
+        missing = [easy.ROLE_WORDS[r] for r in ('base', 'update') if not self.inputs.get(r)]
+        if missing: return ' · '.join(missing) + '을(를) 넣어 주세요.'
+        if not self.where: return '어디에서 플레이할지 골라 주세요.'
+        if self.recipe_mode == 'install':
+            if self.where == '3ds': return None if self.current_sd() else 'SD 카드를 꽂거나 폴더를 골라 주세요.'
+            return None if self.emu_root else '에뮬레이터 폴더를 골라 주세요.'
+        if self.inputs['base'].format != 'NCSD/CCI':
+            return '합본을 만들려면 본편이 카트리지 덤프(.3ds · .cci)여야 해요.'
+        if not recipe.tool_path(self.app_dir).is_file():
+            return '필요한 도구가 빠져 있어요. 프로그램 폴더를 통째로 다시 받아 주세요.'
+        if self.where == '3ds':
+            if not self.tools()[0].is_file(): return '필요한 도구가 빠져 있어요. 프로그램 폴더를 통째로 다시 받아 주세요.'
+            return '키 폴더를 골라 주세요.' if self.keys_problem() else None
+        return None
+
+    # ------------------------------------------------------------ recipe patches
+
+    def recipe(self):
+        return bool(self.package and self.package.kind == easy.RECIPE)
+
+    def recipe_roles(self):
+        return ('base', 'update', 'dlc') if self.recipe_mode == 'rom' else ('base', 'update')
+
+    def requirement(self, role, fallback):
+        spec = self.package.requires(role) if self.package else None
+        return (spec or {}).get('label') or fallback
+
+    def choose_mode(self, key):
+        self.recipe_mode, self.note = key, ''
+        self.remember()
+        self.render()
+
+    def assign_input(self, path, role=None):
+        try:
+            game = easy.check_recipe_input(path, self.package)
+        except easy.EasyError as error:
+            if role:
+                self.inputs.pop(role, None); self.input_errors[role] = error
+            else:
+                self.note = f'{Path(path).name}: {error.title}'
+            return
+        if role and game.role != role:
+            self.note = f'넣은 파일은 {easy.ROLE_WORDS[game.role]}이라 그 자리에 넣었어요.'
+        self.inputs[game.role] = game
+        self.input_errors.pop(game.role, None)
+        if game.role == 'dlc' and self.recipe_mode == 'install':
+            self.note = 'DLC는 합본 게임 파일에만 들어가요. 「합본 게임 파일」을 고르면 함께 넣어요.'
+
+    def pick_input(self, role):
+        chosen = filedialog.askopenfilename(parent=self.app, title=easy.ROLE_WORDS[role] + ' 고르기', filetypes=[
+            ('3DS 게임 파일', '*.cia *.3ds *.cci'), ('모든 파일', '*.*')])
+        if chosen:
+            self.note = ''
+            self.assign_input(Path(chosen), role)
+            self.go('home')
+
+    def remove_dlc(self):
+        self.inputs.pop('dlc', None); self.input_errors.pop('dlc', None)
+        self.render()
 
     # ------------------------------------------------------------ choosing files and places
 
@@ -605,6 +726,7 @@ class EasyPanel(tk.Frame):
             path = Path(raw)
             if path.suffix.lower() in easy.GAME_SUFFIXES and path.is_file():
                 self.game_path = path
+                self.loose.append(path)
             else:
                 self.set_package(path)
         self.check_game()
@@ -613,6 +735,7 @@ class EasyPanel(tk.Frame):
     def set_package(self, path):
         if self.package: self.package.close()
         self.package = self.package_error = None
+        self.inputs, self.input_errors = {}, {}
         try:
             self.package = easy.detect_package(path)
         except easy.EasyError as error:
@@ -622,6 +745,12 @@ class EasyPanel(tk.Frame):
 
     def check_game(self):
         self.game = self.game_error = None
+        if self.recipe():
+            for path in self.loose:
+                self.assign_input(path)
+            self.loose, self.game_path = [], None
+            return
+        self.loose = []
         if not self.game_path:
             return
         if self.package and not self.package.needs_game:
@@ -647,6 +776,7 @@ class EasyPanel(tk.Frame):
             ('3DS 게임 파일', '*.cia *.3ds *.cci *.zcci'), ('모든 파일', '*.*')])
         if chosen:
             self.note, self.game_path = '', Path(chosen)
+            self.loose = [self.game_path]
             self.check_game()
             self.go('home')
 
@@ -702,7 +832,7 @@ class EasyPanel(tk.Frame):
 
     def remember(self):
         easy.save_settings({'place': self.where, 'keys': str(self.key_dir) if self.key_dir else '',
-                            'emulator': str(self.emu_root) if self.emu_root else ''})
+                            'emulator': str(self.emu_root) if self.emu_root else '', 'recipe_mode': self.recipe_mode})
 
     def open_advanced(self):
         self.app.mode.set('간편 모드')
@@ -717,6 +847,7 @@ class EasyPanel(tk.Frame):
     def reset(self):
         if self.package: self.package.close()
         self.package = self.package_error = self.game = self.game_error = self.game_path = None
+        self.inputs, self.input_errors, self.loose = {}, {}, []
         self.note, self.out_dir, self.result, self.failure = '', None, None, None
         self.go('home')
 
@@ -734,8 +865,12 @@ class EasyPanel(tk.Frame):
         post = self.messages.put
         self.remember()
         self.note = ''
-        self.job = {'kind': kind, 'phase': 0, 'fraction': None, 'since': time.monotonic(), 'shown': 0.0,
-                    'title': '패치된 게임 파일을 만들고 있어요' if kind == easy.MERGE else '패치를 설치하고 있어요'}
+        mode, inputs, app_dir = self.recipe_mode, dict(self.inputs), self.app_dir
+        job_kind, title = kind, '패치된 게임 파일을 만들고 있어요' if kind == easy.MERGE else '패치를 설치하고 있어요'
+        if kind == easy.RECIPE:
+            job_kind = (kind, 'install' if mode == 'install' else 'rom-' + fmt.lower())
+            title = '내 게임 파일로 패치를 만들고 있어요' if mode == 'install' else '합본 게임 파일을 만들고 있어요'
+        self.job = {'kind': job_kind, 'phase': 0, 'fraction': None, 'since': time.monotonic(), 'shown': 0.0, 'title': title}
         self.busy = True
 
         def work():
@@ -745,6 +880,18 @@ class EasyPanel(tk.Frame):
                     outcome = easy.run_install(package, target, root, allow_replace,
                                                lambda done, total: post(('progress', 1, done / max(1, total))))
                     post(('done', {'mode': 'install', 'target': target, 'outcome': outcome}))
+                elif kind == easy.RECIPE:
+                    report = lambda phase, fraction: post(('progress', phase, fraction))
+                    log = lambda line: post(('log', line))
+                    if mode == 'install':
+                        outcome = easy.run_recipe(package, inputs, 'install', target, root, allow_replace=allow_replace,
+                                                  progress=report, log=log)
+                        post(('done', {'mode': 'install', 'target': target, 'outcome': outcome}))
+                    else:
+                        output = easy.recipe_output(package, inputs, fmt, out_dir)
+                        outcome = easy.run_recipe(package, inputs, 'rom', output=output, fmt=fmt, app_dir=app_dir, keys=keys,
+                                                  bridge=bridge, progress=report, log=log)
+                        post(('done', {'mode': 'game', 'fmt': fmt, 'outcome': outcome, 'allinone': True}))
                 elif kind == easy.MERGE:
                     output = easy.default_output(game.path, fmt, out_dir)
                     outcome = easy.run_merge(package, game.path, fmt, keys, bridge, xdelta, output,
@@ -776,6 +923,9 @@ class EasyPanel(tk.Frame):
                     self.add_paths(paths)
             while True:
                 message = self.messages.get_nowait()
+                if message[0] == 'log':
+                    self.app.write(str(message[1]))
+                    continue
                 if message[0] == 'progress':
                     if message[1] != self.job['phase']:
                         self.job['since'] = time.monotonic()
@@ -889,8 +1039,10 @@ class EasyPanel(tk.Frame):
         if result['mode'] == 'game':
             output = Path(outcome['output'])
             title, body, shown = '패치된 게임 파일을 만들었어요', '원본 게임 파일은 그대로 있어요.', output
+            if result.get('allinone'):
+                title = '합본 게임 파일을 만들었어요'
             reveal = lambda: subprocess.Popen(['explorer', '/select,', str(output)])
-            steps = easy.next_steps(None, result['fmt'])
+            steps = easy.next_steps(None, result['fmt'], result.get('allinone', False))
         else:
             shown = Path(outcome['targets'][0])
             reveal = lambda: os.startfile(shown)

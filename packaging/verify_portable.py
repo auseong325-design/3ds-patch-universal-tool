@@ -50,7 +50,16 @@ for fmt in ('CCI', 'CIA', 'ZCCI'):
 assert metadata.identify(scratch/'result.cci')['title_id'] == m['title_id']
 result = simple.apply_merged_game(fixture/'game.cci', bundle, scratch/'simple.cci', 'CCI', '', bridge, xdelta)
 assert result['code_checked'] and (scratch/'simple.cci').is_file()
-print('OK: bundled Python/Tk, legacy import, xdelta, standalone bridge, merge CCI/CIA/ZCCI')
+from korean_patch_manager import recipe
+from korean_patch_manager.games.ssb3ds import engine as ssb3ds
+tool = recipe.tool_path(root/'app')
+assert tool.is_file() and core.sha256(tool) == recipe.TOOL_3DSTOOL_SHA256
+assert core.sha256(tool.with_name('ignore_3dstool.txt')) == recipe.TOOL_IGNORE_SHA256
+assert ssb3ds.FORMAT == recipe.FORMAT and recipe.engine('ssb3ds') is ssb3ds
+assert 'PIL' not in sys.modules and 'numpy' not in sys.modules
+import subprocess as _sp
+assert b'3dstool' in _sp.run([str(tool)], capture_output=True, creationflags=runtime.hidden_process_flags()).stdout.lower()
+print('OK: bundled Python/Tk, legacy import, xdelta, standalone bridge, merge CCI/CIA/ZCCI, recipe engine + 3dstool')
 '''
 
 

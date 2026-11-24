@@ -18,6 +18,8 @@
 !/3DS 한글패치 매니저 실행.bat
 !/README_KO.md
 !/korean_patch_manager/*.py
+!/korean_patch_manager/games/**/*.py
+!/korean_patch_manager/games/**/SOURCE.json
 !/tests/*.py
 !/BinJEditor/JTools.py
 !/BinJEditor/LICENSE
