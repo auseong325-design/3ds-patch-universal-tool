@@ -672,7 +672,20 @@ def explain(error):
     return '작업을 끝내지 못했습니다', '넣은 파일이 맞는지 확인하고 다시 시도해 주세요.\n계속 실패하면 아래 내용을 패치 제작자에게 알려 주세요.', None, detail
 
 
-def next_steps(kind, fmt=None, allinone=False):
+def next_steps(kind, fmt=None, allinone=False, recipe=None):
+    """What the user does next. recipe: the recipe Package, for its update requirement and Title ID."""
+    update = (recipe.requires('update') or {}).get('label') if recipe else None
+    title = recipe.title_id if recipe else '<Title ID>'
+    if recipe and kind == SD and not allinone:
+        return ['SD 카드를 「안전하게 제거」한 뒤 3DS에 꽂습니다.',
+                'SELECT 버튼을 누른 채 3DS 전원을 켭니다.',
+                '「Enable game patching」에 표시하고 START로 저장합니다. (한 번만 하면 됩니다)',
+                f'공식 업데이트({update or "패치 안내서의 버전"})를 설치해 둔 채 게임을 실행합니다.',
+                f'주의: 업데이트를 지운 채 이 패치 폴더(luma/titles/{title})를 두고 게임을 켜면 게임이 멈출 수 있습니다. '
+                '업데이트를 지울 때는 이 폴더도 함께 지우거나 옮겨 주세요.']
+    if recipe and kind == EMULATOR and not allinone:
+        return [f'Azahar에 공식 업데이트({update or "패치 안내서의 버전"})가 설치돼 있어야 합니다.',
+                '에뮬레이터를 켜고 게임을 실행합니다. 실행 중이었다면 게임을 껐다 켭니다.']
     if kind == SD:
         return ['SD 카드를 「안전하게 제거」한 뒤 3DS에 꽂습니다.',
                 'SELECT 버튼을 누른 채 3DS 전원을 켭니다.',
@@ -684,7 +697,10 @@ def next_steps(kind, fmt=None, allinone=False):
     if allinone and fmt == 'CIA':
         return ['만들어진 .cia 파일을 SD 카드에 복사합니다.',
                 '3DS에서 FBI를 열어 그 파일을 설치합니다.',
-                '이 게임의 공식 업데이트가 설치돼 있으면 FBI에서 지워 주세요. 합본 안에 업데이트가 들어 있습니다.']
+                '이 게임의 공식 업데이트가 설치돼 있으면 FBI에서 지워 주세요. 합본 안에 업데이트가 들어 있습니다.',
+                f'SD 카드에 이 게임의 패치 폴더(luma/titles/{title})가 있으면 지우거나 옮겨 주세요. '
+                '업데이트를 지운 상태에서 이 폴더가 남아 있으면 카트리지로 실행할 때 게임이 멈출 수 있습니다.',
+                '설치한 게임은 카트리지와 세이브가 따로입니다. 카트리지 세이브를 쓰려면 Checkpoint·JKSV 등으로 옮겨 주세요.']
     if allinone:
         return ['Azahar에서 「파일 → 파일 불러오기」로 만들어진 .3ds 파일을 엽니다.',
                 'Azahar에 이 게임의 업데이트·DLC·모드가 따로 설치돼 있으면 그쪽이 쓰일 수 있습니다. 지우거나 끈 뒤 실행하세요.']

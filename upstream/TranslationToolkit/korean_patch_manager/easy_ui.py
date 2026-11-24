@@ -566,6 +566,10 @@ class EasyPanel(tk.Frame):
                     folder = self.out_dir or (self.inputs['base'].path.parent if self.inputs.get('base') else None)
                     if folder: lines.append(('저장 위치: ', folder))
                     buttons.append(('저장 위치', self.pick_output))
+            if allinone and self.sd_patch_folder():
+                tone, glyph = 'warn', 'warn'
+                lines.append('SD 카드에 이 게임의 패치 폴더가 있어요. 합본을 쓸 때는 지우거나 옮겨 주세요. '
+                             '공식 업데이트 없이 이 폴더가 남으면 카트리지 실행이 멈출 수 있어요.')
         elif self.where == '3ds':
             root = self.current_sd()
             card = next((c for c in self.cards if c.root == root), None)
@@ -674,6 +678,18 @@ class EasyPanel(tk.Frame):
 
     def recipe(self):
         return bool(self.package and self.package.kind == easy.RECIPE)
+
+    def sd_patch_folder(self):
+        """This game's Luma patch folder on the SD card that is plugged in or chosen, if there is one."""
+        cards = ([self.sd_root] if self.sd_root else []) + [c.root for c in self.cards]
+        for root in cards:
+            try:
+                folder = Path(root) / 'luma' / 'titles' / self.package.title_id
+                if folder.is_dir():
+                    return folder
+            except OSError:
+                continue
+        return None
 
     def recipe_roles(self):
         return ('base', 'update', 'dlc') if self.recipe_mode == 'rom' else ('base', 'update')
@@ -886,12 +902,12 @@ class EasyPanel(tk.Frame):
                     if mode == 'install':
                         outcome = easy.run_recipe(package, inputs, 'install', target, root, allow_replace=allow_replace,
                                                   progress=report, log=log)
-                        post(('done', {'mode': 'install', 'target': target, 'outcome': outcome}))
+                        post(('done', {'mode': 'install', 'target': target, 'outcome': outcome, 'recipe': package}))
                     else:
                         output = easy.recipe_output(package, inputs, fmt, out_dir)
                         outcome = easy.run_recipe(package, inputs, 'rom', output=output, fmt=fmt, app_dir=app_dir, keys=keys,
                                                   bridge=bridge, progress=report, log=log)
-                        post(('done', {'mode': 'game', 'fmt': fmt, 'outcome': outcome, 'allinone': True}))
+                        post(('done', {'mode': 'game', 'fmt': fmt, 'outcome': outcome, 'allinone': True, 'recipe': package}))
                 elif kind == easy.MERGE:
                     output = easy.default_output(game.path, fmt, out_dir)
                     outcome = easy.run_merge(package, game.path, fmt, keys, bridge, xdelta, output,
@@ -1042,11 +1058,11 @@ class EasyPanel(tk.Frame):
             if result.get('allinone'):
                 title = '합본 게임 파일을 만들었어요'
             reveal = lambda: subprocess.Popen(['explorer', '/select,', str(output)])
-            steps = easy.next_steps(None, result['fmt'], result.get('allinone', False))
+            steps = easy.next_steps(None, result['fmt'], result.get('allinone', False), result.get('recipe'))
         else:
             shown = Path(outcome['targets'][0])
             reveal = lambda: os.startfile(shown)
-            steps = easy.next_steps(result['target'])
+            steps = easy.next_steps(result['target'], recipe=result.get('recipe'))
             if outcome['state'] == 'same':
                 title, body = '이미 설치되어 있어요', '같은 패치가 이미 들어 있어서 바꾼 것이 없어요.'
             else:

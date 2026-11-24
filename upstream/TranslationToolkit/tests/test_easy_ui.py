@@ -171,6 +171,10 @@ class EasyUITests(unittest.TestCase):
         self.click('패치 설치')
         self.assertEqual(panel.blocker(), '업데이트 파일을(를) 넣어 주세요.')
         self.assertEqual(json.loads((self.root / 'settings.json').read_text(encoding='utf-8'))['recipe_mode'], 'install')
+        sd = self.root / 'sd'; (sd / 'luma' / 'titles' / BASE).mkdir(parents=True)
+        panel.sd_root, panel.cards = sd, []
+        self.click('합본 게임 파일'); self.click('닌텐도 3DS')
+        self.assertIn('SD 카드에 이 게임의 패치 폴더가 있어요', self.texts())
 
     def test_wrong_files_help_modes_and_themes(self):
         import KoreanPatchManager as kpm

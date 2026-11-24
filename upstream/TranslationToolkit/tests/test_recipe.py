@@ -118,6 +118,24 @@ class RecipeRecognitionTests(unittest.TestCase):
         self.assertEqual(seen, [0, 0, 1, 2, 2, 3])
 
 
+class NextStepTests(unittest.TestCase):
+    def test_warnings_for_missing_update_and_left_over_patch_folder(self):
+        with tempfile.TemporaryDirectory() as td:
+            recipe_zip(Path(td) / 'r.zip', requires={'base': {'title_id': BASE}, 'update': {'title_id': UPDATE, 'label': '업데이트 1.1.7'}})
+            package = easy.detect_package(Path(td) / 'r.zip')
+            self.addCleanup(package.close)
+            sd = ' '.join(easy.next_steps(easy.SD, recipe=package))
+            self.assertIn('공식 업데이트(업데이트 1.1.7)를 설치해 둔 채', sd)
+            self.assertIn(f'luma/titles/{BASE}', sd)
+            self.assertIn('멈출 수 있습니다', sd)
+            self.assertIn('업데이트 1.1.7', ' '.join(easy.next_steps(easy.EMULATOR, recipe=package)))
+            cia = ' '.join(easy.next_steps(None, 'CIA', True, package))
+            self.assertIn('FBI에서 지워 주세요', cia)
+            self.assertIn(f'luma/titles/{BASE}', cia)
+            self.assertIn('세이브가 따로', cia)
+            self.assertNotIn('luma/titles', ' '.join(easy.next_steps(easy.SD)))     # ordinary install ZIPs keep their wording
+
+
 class LumaPlacementTests(unittest.TestCase):
     def test_code_right_after_text_is_refused(self):
         with tempfile.TemporaryDirectory() as td:
